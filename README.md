@@ -69,7 +69,7 @@ If `origin` exists, use `git remote set-url origin git@github.com:<your-username
 - Ensure Ollama is running and accessible at the configured `OLLAMA_BASE_URL`.
 - Keep the backend process alive (tmux/systemd or Docker with `--restart unless-stopped`) so Nginx proxying `/api/` succeeds.
 
-##Contributions
+## Contributions
 
 Hanson Pan — Ingestion UI, Neuroglancer integration, and end-to-end pipeline wiring across the FastAPI supervisor, PyTorch Connectomics worker, and SLURM submission layer. Implemented major backend–frontend glue code and overall system orchestration.
 
