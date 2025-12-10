@@ -68,3 +68,13 @@ If `origin` exists, use `git remote set-url origin git@github.com:<your-username
 ## Notes
 - Ensure Ollama is running and accessible at the configured `OLLAMA_BASE_URL`.
 - Keep the backend process alive (tmux/systemd or Docker with `--restart unless-stopped`) so Nginx proxying `/api/` succeeds.
+
+##Contributions
+
+Hanson Pan — Ingestion UI, Neuroglancer integration, and end-to-end pipeline wiring across the FastAPI supervisor, PyTorch Connectomics worker, and SLURM submission layer. Implemented major backend–frontend glue code and overall system orchestration.
+
+Tian-Hao Zhao — Agent supervisor design and implementation (LangChain/LangGraph), training/inference sub-agents, SLURM execution tooling, and monitoring flows within server_api/ and server_pytc/.
+
+Ethan Shen — Error-detection and proofreading workflow, dataset triage logic, and improvements to stability of request/response handling.
+
+Team — Joint architectural design, documentation, experiment design, writing, and editing across the MVP.
