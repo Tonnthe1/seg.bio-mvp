@@ -385,6 +385,8 @@ Instructions:
 - Use ONLY valid config keys in overrides
 - Ask for clarification if unclear
 - When asked about job status/progress, ALWAYS use check_training_progress tool - don't just describe what to do
+- CRITICAL: When calling check_training_progress, you MUST pass BOTH job_id AND job_name from the submit_training_job response
+- The job_name is needed to locate the correct log file (format: <job_name>_<job_id>.out)
 - Use tools when they're relevant to the task - but you can answer simple questions directly
 """
 
@@ -417,8 +419,14 @@ Tools:
 
 Instructions:
 - List checkpoints first
-- Read config to get test data paths
-- Submit inference/evaluation jobs
+- CRITICAL: To read the config for a checkpoint, construct the config path from the checkpoint path:
+  * Checkpoint structure: <experiment_dir>/<timestamp>/checkpoints/<checkpoint_file>
+  * Config location: <experiment_dir>/<timestamp>/config.yaml
+  * Example: If checkpoint is "outputs/monai_lucchi++/20251130_173307/checkpoints/last.ckpt"
+            Then config is "outputs/monai_lucchi++/20251130_173307/config.yaml"
+  * Algorithm: Go up 2 directories from checkpoint file, then append "config.yaml"
+- Read config to extract test data paths (inference.data.test_image and inference.data.test_label)
+- Submit inference/evaluation jobs with the extracted test paths
 - When asked about job status/progress, use check_inference_progress tool - don't just describe what to do
 - Use tools when they're relevant to the task - but you can answer simple questions directly
 """
