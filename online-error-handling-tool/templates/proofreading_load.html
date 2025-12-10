@@ -1,0 +1,363 @@
+{% extends "base.html" %}
+
+{% block title %}Proofreading - Load Dataset{% endblock %}
+{% block page_title %}Proofreading - Load Dataset{% endblock %}
+
+{% block content %}
+<div class="landing-container">
+  <div class="hero-section">
+    <h2>Load Dataset for Proofreading</h2>
+    <p>Load your image and mask files to begin direct mask editing and correction.</p>
+  </div>
+
+  {% if error %}
+  <div class="alert alert-error">
+    <h3>⚠️ Error</h3>
+    <p>{{ error }}</p>
+  </div>
+  {% endif %}
+
+  {% if has_existing_data %}
+  <div class="existing-data-section">
+    <div class="existing-data-card">
+      <h3>📁 Previously Loaded Dataset</h3>
+      <div class="data-info">
+        <p><strong>Image:</strong> {{ existing_image_path }}</p>
+        {% if existing_mask_path %}
+        <p><strong>Mask:</strong> {{ existing_mask_path }}</p>
+        {% endif %}
+        <p><strong>Dimensions:</strong> {{ existing_shape }}</p>
+        <p><strong>Mode:</strong> {{ '3D' if existing_mode3d else '2D' }}</p>
+      </div>
+      <div class="existing-data-actions">
+        <a href="/standalone_proofreading/editor" class="btn btn-primary btn-large">
+          🎯 Continue with Existing Data
+        </a>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="load-form-container">
+    <form action="/standalone_proofreading/load" method="POST" enctype="multipart/form-data" class="load-form">
+      <div class="form-section">
+        <h3>Load Mode</h3>
+        <div class="radio-group">
+          <label class="radio-label">
+            <input type="radio" name="load_mode" value="path" checked>
+            <span>Use local file paths</span>
+          </label>
+          <label class="radio-label">
+            <input type="radio" name="load_mode" value="upload">
+            <span>Upload files</span>
+          </label>
+        </div>
+      </div>
+
+      <div id="path-section" class="form-section">
+        <h3>File Paths</h3>
+        <div class="input-group">
+          <label for="image_path">Image/Folder/Glob Path *</label>
+          <input type="text" id="image_path" name="image_path" 
+                 value="{{ image_path or '' }}" 
+                 placeholder="/path/to/image.tif or /path/folder/*.tif or /path/folder" required>
+          <small>Tip: Provide a single file, a folder to stack all images of the same type, or a glob like /path/to/images/*.tif</small>
+        </div>
+        <div class="input-group">
+          <label for="mask_path">Mask Path (optional)</label>
+          <input type="text" id="mask_path" name="mask_path" 
+                 value="{{ mask_path or '' }}" 
+                 placeholder="/path/to/mask.tif">
+        </div>
+      </div>
+
+      <div id="upload-section" class="form-section" style="display: none;">
+        <h3>File Upload</h3>
+        <div class="input-group">
+          <label for="image_file">Image/Stack File(s) *</label>
+          <input type="file" id="image_file" name="image_file" multiple 
+                 accept=".tif,.tiff,.png,.jpg,.jpeg">
+          <span id="image-dim-info" class="dim-info"></span>
+        </div>
+        <div class="input-group">
+          <label for="mask_file">Mask File (optional)</label>
+          <input type="file" id="mask_file" name="mask_file" 
+                 accept=".tif,.tiff,.png,.jpg,.jpeg">
+          <span id="mask-dim-info" class="dim-info"></span>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button id="load-submit" type="submit" class="btn btn-primary">Load Dataset</button>
+        <button type="button" class="btn btn-secondary" onclick="resetForm()">Reset</button>
+        <a href="/" class="btn btn-secondary">← Back to Main Menu</a>
+      </div>
+    </form>
+  </div>
+
+  <div class="info-section">
+    <h3>Supported Formats</h3>
+    <ul>
+      <li><strong>Images:</strong> TIFF (.tif, .tiff), PNG (.png), JPEG (.jpg, .jpeg)</li>
+      <li><strong>3D Stacks:</strong> Multi-page TIFF files</li>
+      <li><strong>Masks:</strong> Same formats as images, should match dimensions</li>
+    </ul>
+    
+    <h3>Proofreading Features</h3>
+    <ul>
+      <li>Load 2D images or 3D TIFF stacks with masks</li>
+      <li>Paint and erase tools for mask editing</li>
+      <li>Slice-by-slice navigation for 3D data</li>
+      <li>Save corrected masks back to file</li>
+      <li>Professional mask editing interface</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Handle load mode switching
+document.querySelectorAll('input[name="load_mode"]').forEach(radio => {
+  radio.addEventListener('change', function() {
+    const pathSection = document.getElementById('path-section');
+    const uploadSection = document.getElementById('upload-section');
+    const imagePathInput = document.getElementById('image_path');
+    const maskPathInput = document.getElementById('mask_path');
+    const imageFileInput = document.getElementById('image_file');
+    const maskFileInput = document.getElementById('mask_file');
+    
+    if (this.value === 'upload') {
+      pathSection.style.display = 'none';
+      uploadSection.style.display = 'block';
+      // Disable path inputs when in upload mode
+      imagePathInput.removeAttribute('required');
+      maskPathInput.removeAttribute('required');
+      imageFileInput.setAttribute('required', 'required');
+      maskFileInput.removeAttribute('required');
+    } else {
+      pathSection.style.display = 'block';
+      uploadSection.style.display = 'none';
+      // Disable upload inputs when in path mode
+      imagePathInput.setAttribute('required', 'required');
+      maskPathInput.removeAttribute('required');
+      imageFileInput.removeAttribute('required');
+      maskFileInput.removeAttribute('required');
+    }
+  });
+});
+
+// Handle file dimension display
+document.getElementById('image_file').addEventListener('change', async function(e) {
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
+
+  const dimInfo = document.getElementById('image-dim-info');
+  if (files.length > 1) {
+    const formData = new FormData();
+    formData.append('file', files[0]);
+    try {
+      const response = await fetch('/standalone_proofreading/api/dims', { method: 'POST', body: formData });
+      const data = await response.json();
+      if (data.shape) {
+        dimInfo.textContent = `${files.length} files selected • First dims: ${data.shape.join(' × ')}`;
+        dimInfo.className = 'dim-info success';
+      } else {
+        dimInfo.textContent = `${files.length} files selected`;
+        dimInfo.className = 'dim-info';
+      }
+    } catch (err) {
+      dimInfo.textContent = `${files.length} files selected`;
+      dimInfo.className = 'dim-info';
+    }
+    return;
+  }
+
+  const file = files[0];
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    const response = await fetch('/standalone_proofreading/api/dims', { method: 'POST', body: formData });
+    const data = await response.json();
+    if (data.shape) {
+      dimInfo.textContent = `Dimensions: ${data.shape.join(' × ')}`;
+      dimInfo.className = 'dim-info success';
+    } else {
+      dimInfo.textContent = `Error: ${data.error}`;
+      dimInfo.className = 'dim-info error';
+    }
+  } catch (err) {
+    console.error('Error fetching dimensions:', err);
+  }
+});
+
+document.getElementById('mask_file').addEventListener('change', async function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  try {
+    const response = await fetch('/standalone_proofreading/api/dims', {
+      method: 'POST',
+      body: formData
+    });
+    const data = await response.json();
+    
+    const dimInfo = document.getElementById('mask-dim-info');
+    if (data.shape) {
+      dimInfo.textContent = `Dimensions: ${data.shape.join(' × ')}`;
+      dimInfo.className = 'dim-info success';
+    } else {
+      dimInfo.textContent = `Error: ${data.error}`;
+      dimInfo.className = 'dim-info error';
+    }
+  } catch (err) {
+    console.error('Error fetching dimensions:', err);
+  }
+});
+
+async function resetForm() {
+  // Clear server-side data first
+  try {
+    const response = await fetch('/standalone_proofreading/clear', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const result = await response.json();
+    if (!result.success) {
+      console.error('Failed to clear server data:', result.error);
+    }
+  } catch (error) {
+    console.error('Error clearing server data:', error);
+  }
+  
+  // Reset form
+  const form = document.querySelector('form');
+  form.reset();
+  document.getElementById('path-section').style.display = 'block';
+  document.getElementById('upload-section').style.display = 'none';
+  document.getElementById('image-dim-info').textContent = '';
+  document.getElementById('mask-dim-info').textContent = '';
+  
+  // Reset required attributes based on current mode
+  const loadMode = document.querySelector('input[name="load_mode"]:checked');
+  if (loadMode && loadMode.value === 'upload') {
+    document.getElementById('image_file').setAttribute('required', 'required');
+    document.getElementById('mask_file').setAttribute('required', 'required');
+    document.getElementById('image_path').removeAttribute('required');
+    document.getElementById('mask_path').removeAttribute('required');
+  } else {
+    document.getElementById('image_path').setAttribute('required', 'required');
+    document.getElementById('mask_path').setAttribute('required', 'required');
+    document.getElementById('image_file').removeAttribute('required');
+    document.getElementById('mask_file').removeAttribute('required');
+  }
+  
+  // Hide existing data section if it exists
+  const existingDataSection = document.querySelector('.existing-data-section');
+  if (existingDataSection) {
+    existingDataSection.style.display = 'none';
+  }
+  
+  // Show the load form
+  document.querySelector('.load-form-container').style.display = 'block';
+  
+  // Reload the page to ensure clean state
+  window.location.reload();
+}
+
+// Clear data before loading new dataset
+function clearDataBeforeLoad() {
+  fetch('/standalone_proofreading/clear', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    }
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      console.log('Previous data cleared before loading new dataset');
+    } else {
+      console.error('Error clearing previous data:', data.error);
+    }
+  })
+  .catch(error => {
+    console.error('Error clearing previous data:', error);
+  });
+}
+
+// Add event listener to form submission
+document.addEventListener('DOMContentLoaded', function() {
+  const form = document.querySelector('form');
+  const submitBtn = document.getElementById('load-submit');
+  if (form) {
+    form.addEventListener('submit', function(e) {
+      // Clear previous data before submitting
+      clearDataBeforeLoad();
+      // Prevent double submits
+      if (submitBtn){
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Loading...';
+      }
+    });
+  }
+});
+
+</script>
+
+<style>
+  .existing-data-section {
+    margin: 2rem 0;
+  }
+
+  .existing-data-card {
+    background: #f0f9ff;
+    border: 2px solid #0ea5e9;
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  }
+
+  .existing-data-card h3 {
+    margin: 0 0 1rem 0;
+    color: #0c4a6e;
+    font-size: 1.25rem;
+    font-weight: 600;
+  }
+
+  .data-info {
+    background: white;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid #e0f2fe;
+  }
+
+  .data-info p {
+    margin: 0.5rem 0;
+    font-size: 0.875rem;
+    color: #374151;
+  }
+
+  .data-info strong {
+    color: #0c4a6e;
+    font-weight: 600;
+  }
+
+  .existing-data-actions {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .btn-large {
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+</style>
+{% endblock %}

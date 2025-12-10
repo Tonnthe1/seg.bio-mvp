@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>{% block title %}Error Detection Tool{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/detection.css') }}">
+  {% block extra_css %}{% endblock %}
+</head>
+<body>
+  <div class="main-wrapper">
+    <header class="header">
+      <h1>{% block page_title %}Error Detection Tool{% endblock %}</h1>
+      <nav class="nav">
+        <a href="{{ url_for('landing.landing') }}" class="nav-link">Home</a>
+        {% if layers is defined and layers %}
+        <a href="{{ url_for('detection.detection') }}" class="nav-link">Detection</a>
+        <a href="{{ url_for('review.review') }}" class="nav-link">Review</a>
+        <a href="{{ url_for('proofreading.proofreading') }}" class="nav-link">Proofreading</a>
+        <a href="{{ url_for('export.export') }}" class="nav-link">Export</a>
+        {% endif %}
+        <a href="{{ url_for('landing.reset') }}" class="nav-link">Reset</a>
+      </nav>
+    </header>
+
+
+    <main class="main-content">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+      <p>Error Detection Tool - Interactive error detection and labeling for 2D/3D images</p>
+    </footer>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/utils.js') }}"></script>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

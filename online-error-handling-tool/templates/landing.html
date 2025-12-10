@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+
+{% block title %}Error Handling Tool{% endblock %}
+{% block page_title %}Error Handling Tool{% endblock %}
+
+{% block content %}
+<div class="landing-container">
+  <div class="landing-header">
+    <h1>Error Handling Tool</h1>
+    <p>Integrated error detection and proofreading for 2D/3D images</p>
+  </div>
+
+  <div class="workflow-selection">
+    <h2>Choose Your Workflow</h2>
+    <div class="workflow-cards">
+      <div class="workflow-card" id="error-detection-card">
+        <div class="card-icon">🔍</div>
+        <h3>Error Detection</h3>
+        <p>Detect and categorize errors in your image segmentation</p>
+        <ul class="feature-list">
+          <li>Load 2D/3D image stacks</li>
+          <li>Review and annotate layers</li>
+          <li>Export results for analysis</li>
+        </ul>
+        <button class="btn btn-primary btn-large" onclick="startErrorDetection()">
+          Start Error Detection
+        </button>
+      </div>
+      
+      <div class="workflow-card" id="proofreading-card">
+        <div class="card-icon">✏️</div>
+        <h3>Proofreading</h3>
+        <p>Directly edit and correct segmentation masks</p>
+        <ul class="feature-list">
+          <li>Load image and mask files</li>
+          <li>Edit masks with paint/erase tools</li>
+          <li>Save corrected masks</li>
+        </ul>
+        <button class="btn btn-success btn-large" onclick="startProofreading()">
+          Start Proofreading
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="info-section">
+    <h3>About Error Handling Tool</h3>
+    <div class="info-grid">
+      <div class="info-card">
+        <div class="info-icon">🔍</div>
+        <h4>Error Detection</h4>
+        <p>Systematically review and categorize segmentation errors in your dataset</p>
+      </div>
+      <div class="info-card">
+        <div class="info-icon">✏️</div>
+        <h4>Proofreading</h4>
+        <p>Directly edit and correct segmentation masks with professional tools</p>
+      </div>
+      <div class="info-card">
+        <div class="info-icon">🔄</div>
+        <h4>Integrated Workflow</h4>
+        <p>Seamlessly move between detection and correction workflows</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.landing-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.landing-header {
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+.landing-header h1 {
+  font-size: 3rem;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 1rem;
+}
+
+.landing-header p {
+  font-size: 1.25rem;
+  color: #6b7280;
+}
+
+.workflow-selection {
+  margin-bottom: 4rem;
+}
+
+.workflow-selection h2 {
+  text-align: center;
+  font-size: 2rem;
+  color: #374151;
+  margin-bottom: 2rem;
+}
+
+.workflow-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 2rem;
+  margin-bottom: 2rem;
+}
+
+.workflow-card {
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 1rem;
+  padding: 2rem;
+  text-align: center;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.workflow-card:hover {
+  border-color: #3b82f6;
+  transform: translateY(-4px);
+  box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.1);
+}
+
+.card-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+}
+
+.workflow-card h3 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 1rem;
+}
+
+.workflow-card p {
+  color: #6b7280;
+  margin-bottom: 1.5rem;
+  font-size: 1.1rem;
+}
+
+.feature-list {
+  list-style: none;
+  padding: 0;
+  margin: 1.5rem 0;
+  text-align: left;
+}
+
+.feature-list li {
+  padding: 0.5rem 0;
+  color: #4b5563;
+  position: relative;
+  padding-left: 1.5rem;
+}
+
+.feature-list li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  color: #10b981;
+  font-weight: bold;
+}
+
+.btn-large {
+  font-size: 1.125rem;
+  padding: 1rem 2rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  min-width: 200px;
+  transition: all 0.3s ease;
+}
+
+.info-section {
+  background: #f9fafb;
+  border-radius: 1rem;
+  padding: 2rem;
+  margin-top: 2rem;
+}
+
+.info-section h3 {
+  text-align: center;
+  font-size: 1.5rem;
+  color: #374151;
+  margin-bottom: 2rem;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+}
+
+.info-card {
+  text-align: center;
+  padding: 1.5rem;
+}
+
+.info-icon {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+}
+
+.info-card h4 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 0.5rem;
+}
+
+.info-card p {
+  color: #6b7280;
+  line-height: 1.6;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function startErrorDetection() {
+  window.location.href = '/detection/load';
+}
+
+function startProofreading() {
+  window.location.href = '/standalone_proofreading/load';
+}
+</script>
+{% endblock %}

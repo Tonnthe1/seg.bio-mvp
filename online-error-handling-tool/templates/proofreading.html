@@ -1,0 +1,1527 @@
+{% extends "base.html" %}
+
+{% block title %}Proofreading – Editor{% endblock %}
+{% block page_title %}Proofreading Editor{% endblock %}
+
+{% block content %}
+<div class="editor-container">
+  <div class="editor-header">
+
+
+    <!-- Dataset change section removed for proofreading -->
+
+    <!-- Layer Navigation -->
+    {% if incorrect_layers %}
+    <div class="layer-navigation">
+              <div class="nav-info">
+                <span class="current-layer">Layer {{ current_layer.z + 1 if current_layer.z is defined else layer_index + 1 }} (Slice {{ current_layer.z + 1 if current_layer.z is defined else layer_index + 1 }})</span>
+                <span class="layer-progress">{{ layer_index + 1 }} of {{ total_incorrect }} incorrect</span>
+              </div>
+      <div class="nav-controls">
+        {% if layer_index > 0 %}
+        <button class="btn btn-secondary btn-sm" id="prev-layer">← Previous</button>
+        {% endif %}
+        {% if layer_index < total_incorrect - 1 %}
+        <button class="btn btn-secondary btn-sm" id="next-layer">Next →</button>
+        {% endif %}
+        <button class="btn btn-primary btn-sm" id="mark-corrected">Mark as Corrected</button>
+        <button class="btn btn-secondary btn-sm" id="back-to-selection">Back to Selection</button>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="toolbar">
+      <div class="toolbar-group">
+        <label>Paint Brush
+          <input id="paint-brush" type="range" min="1" max="64" value="8">
+        </label>
+        <label>Erase Brush
+          <input id="erase-brush" type="range" min="1" max="64" value="8">
+        </label>
+      </div>
+
+      <div class="toolbar-group">
+        <button id="mode-add" class="btn btn-success active-mode">🖌️ Paint</button>
+        <button id="mode-erase" class="btn btn-secondary">🧽 Erase</button>
+      </div>
+
+      <!-- No slice navigation for incorrect layer editing - we only edit one specific slice -->
+    <div class="toolbar-group">
+      <label>Slice
+        <span class="slice-ctrl">
+          <button type="button" id="z-dec" class="btn btn-sm" aria-label="Previous slice">−</button>
+          <input id="z" type="number" min="1" max="{{ total_incorrect if incorrect_layers else 1 }}" step="1" value="{{ layer_index + 1 if incorrect_layers else 1 }}" inputmode="numeric">
+          <button type="button" id="z-inc" class="btn btn-sm" aria-label="Next slice">+</button>
+        </span>
+      </label>
+      
+    </div>
+
+      <div class="toolbar-group">
+        <button id="undo" class="btn btn-secondary">Undo</button>
+        <button id="redo" class="btn btn-secondary">Redo</button>
+        <button id="toggle-mask" class="btn btn-warning">Hide Mask</button>
+        <button id="save" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+
+    <div class="editor-wrapper" id="editor-wrapper">
+      <div id="canvas-container">
+        <canvas id="base"></canvas>
+        <canvas id="mask-layer"></canvas>
+        <canvas id="cursor-layer"></canvas>
+      </div>
+    </div>
+
+    {% if shape %}
+    <div class="dimensions-info">
+      <span class="dimension-item">
+        <span class="dimension-label">Image:</span>
+        <span class="dimension-value">{{ shape }}</span>
+      </span>
+      {% if mask_shape %}
+      <span class="dimension-item">
+        <span class="dimension-label">Mask:</span>
+        <span class="dimension-value">{{ mask_shape }}</span>
+      </span>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- File Dimensions Info -->
+    <div class="dimensions-info">
+      <div class="dims-row dims-top">
+        <div class="dim-info" id="dim-image">
+          <strong>Image:</strong> {{ volume_shape[0] if volume_shape else 'N/A' }} × {{ volume_shape[1] if volume_shape else 'N/A' }} pixels
+          {% if volume_shape and volume_shape|length > 2 %}
+          ({{ volume_shape[2] }} channels)
+          {% endif %}
+        </div>
+        {% if mask_shape %}
+        <div class="dim-info" id="dim-mask">
+          <strong>Mask:</strong> {{ mask_shape[0] if mask_shape else 'N/A' }} × {{ mask_shape[1] if mask_shape else 'N/A' }} pixels
+          {% if mask_shape and mask_shape|length > 2 %}
+          ({{ mask_shape[2] }} channels)
+          {% endif %}
+        </div>
+        {% endif %}
+        <div class="dim-info dim-info-wide" id="dim-layer">
+          <strong>Current Layer:</strong> Slice {{ (slice_index + 1) if slice_index is defined else 'N/A' }}
+          {% if incorrect_layers %}
+          ({{ layer_index + 1 }} of {{ total_incorrect }} incorrect layers)
+          {% endif %}
+        </div>
+      </div>
+      <div class="dims-row dims-files">
+        <div class="dim-info" id="file-info">
+          <strong>File:</strong> —
+        </div>
+      </div>
+    </div>
+
+    <!-- Instructions -->
+    <div class="instructions">
+      <h4>📝 How to Use the Proofreading Tool</h4>
+      <div class="instruction-steps">
+        <div class="step">
+          <span class="step-number">1</span>
+          <div class="step-content">
+            <strong>Select Mode:</strong> Click <span class="btn btn-success btn-sm">🖌️ Paint</span> to add mask areas or <span class="btn btn-secondary btn-sm">🧽 Erase</span> to remove them
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-number">2</span>
+          <div class="step-content">
+            <strong>Adjust Brush:</strong> Use the brush size sliders to set the paint/erase brush size
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-number">3</span>
+          <div class="step-content">
+            <strong>Edit Mask:</strong> Hold and drag the mouse to paint or erase mask areas. The red overlay shows the current mask
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-number">4</span>
+          <div class="step-content">
+            <strong>Navigate:</strong> Use <kbd>A</kbd>/<kbd>D</kbd> or <kbd>←</kbd>/<kbd>→</kbd> to move between different incorrect layers
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-number">5</span>
+          <div class="step-content">
+            <strong>Save Changes:</strong> Click <span class="btn btn-primary btn-sm">Save</span> to save your edits to the mask file
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-number">6</span>
+          <div class="step-content">
+            <strong>Mark Complete:</strong> Click <span class="btn btn-success btn-sm">Mark as Corrected</span> when done with this layer
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hint">
+      <h4>⌨️ Keyboard Shortcuts</h4>
+      <div class="shortcuts-grid">
+        <div class="shortcut-item">
+          <kbd>A</kbd> or <kbd>←</kbd> <span>Previous layer</span>
+        </div>
+        <div class="shortcut-item">
+          <kbd>D</kbd> or <kbd>→</kbd> <span>Next layer</span>
+        </div>
+        <div class="shortcut-item">
+          <kbd>P</kbd> <span>Paint mode</span>
+        </div>
+        <div class="shortcut-item">
+          <kbd>E</kbd> <span>Erase mode</span>
+        </div>
+        <div class="shortcut-item">
+          <kbd>⌘/Ctrl + Z</kbd> <span>Undo</span>
+        </div>
+        <div class="shortcut-item">
+          <kbd>⌘/Ctrl + Shift + Z</kbd> <span>Redo</span>
+        </div>
+      </div>
+      <p><strong>Mouse:</strong> Hold to paint/erase • <strong>Zoom:</strong> ⌘ Command + Scroll</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  body {
+    margin: 0;
+    padding: 0;
+    overflow: auto;
+  }
+  .main-content {
+    overflow: auto;
+  }
+
+  .editor-container {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 #f1f5f9;
+  }
+
+  .editor-container::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .editor-container::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+  }
+
+  .editor-container::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+  }
+
+  .editor-container::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+
+  .editor-header {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0;
+    height: auto;
+  }
+
+  .editor-header h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #1f2937;
+    margin: 0;
+    padding: 0;
+    line-height: 1;
+    height: auto;
+  }
+
+  .dimensions-info {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    margin: 0.75rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .dims-row {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    justify-content: center;
+    overflow-x: auto;
+  }
+
+  .dataset-change {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 0.25rem;
+    margin: 0 0 0.05rem 0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: flex-start;
+  }
+
+  .dataset-change summary {
+    cursor: pointer;
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 0.25rem;
+    font-size: 1rem;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-align: left;
+  }
+
+  .toolbar {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    margin: 0 0 0.05rem 0;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 0.25rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+
+  .dataset-change .input-group {
+    margin-bottom: 0.15rem;
+  }
+
+  .dataset-change .input-group label {
+    font-size: 1rem;
+    font-weight: 500;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: #374151;
+  }
+
+  .dataset-change .input-group input {
+    font-size: 0.875rem;
+    padding: 0.5rem;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: #374151;
+  }
+
+  .dataset-change .form-actions {
+    margin-top: 0.25rem;
+  }
+
+  .dataset-change .form-actions button {
+    font-size: 0.875rem;
+    padding: 0.5rem 1rem;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-weight: 500;
+    color: #374151;
+  }
+
+  .dataset-change .radio-group {
+    margin-bottom: 0.15rem;
+  }
+
+  .dataset-change .radio-group label {
+    font-size: 1rem;
+    font-weight: 500;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: #374151;
+  }
+
+  .layer-navigation {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin: 0 0 0.05rem 0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+
+  .nav-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .current-layer {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #1e293b;
+  }
+
+  .layer-progress {
+    font-size: 0.875rem;
+    color: #64748b;
+  }
+
+  .nav-controls {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  /* Active mode styling */
+  .active-mode {
+    background: #10b981 !important;
+    color: white !important;
+    font-weight: 600 !important;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.3) !important;
+    transform: scale(1.05);
+  }
+
+  .btn:not(.active-mode) {
+    opacity: 0.7;
+    transition: all 0.2s ease;
+  }
+
+  .btn:not(.active-mode):hover {
+    opacity: 1;
+    transform: scale(1.02);
+  }
+
+  /* Keyboard Shortcuts Styling */
+  .shortcuts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.75rem;
+    margin: 1rem 0;
+  }
+
+  .shortcut-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+  }
+
+  .shortcut-item kbd {
+    background: #1e293b;
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.75rem;
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+
+  .shortcut-item span {
+    color: #374151;
+    font-weight: 500;
+  }
+
+  .hint h4 {
+    margin: 0 0 0.5rem 0;
+    color: #1e293b;
+    font-size: 1rem;
+  }
+
+  /* Dimensions Info Styling */
+  .dimensions-info {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin: 1rem 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: center;
+  }
+
+  .dim-info {
+    font-size: 0.875rem;
+    color: #374151;
+    background: white;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    border: 1px solid #d1d5db;
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.35rem;
+    white-space: nowrap;
+  }
+
+  .dim-info-wide {
+    flex: 2 1 0;
+  }
+
+  .dim-info strong {
+    color: #1e293b;
+    font-weight: 600;
+  }
+
+  /* Instructions Styling */
+  .instructions {
+    background: #f0f9ff;
+    border: 1px solid #0ea5e9;
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    margin: 1rem 0;
+  }
+
+  .instructions h4 {
+    margin: 0 0 1rem 0;
+    color: #0c4a6e;
+    font-size: 1.125rem;
+    font-weight: 600;
+  }
+
+  .instruction-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .step {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .step-number {
+    background: #0ea5e9;
+    color: white;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .step-content {
+    flex: 1;
+    font-size: 0.875rem;
+    color: #0c4a6e;
+    line-height: 1.5;
+  }
+
+  .step-content strong {
+    color: #0c4a6e;
+    font-weight: 600;
+  }
+
+  .step-content .btn {
+    margin: 0 0.25rem;
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    pointer-events: none;
+    cursor: default;
+    opacity: 0.8;
+  }
+
+  .toolbar-group {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .toolbar label {
+    font-weight: 500;
+    color: #374151;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .toolbar input[type="range"] {
+    width: 100px;
+  }
+
+  .toolbar input[type="number"] {
+    width: 60px;
+    text-align: center;
+    padding: 0.25rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.25rem;
+  }
+
+  .slice-ctrl {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .editor-wrapper {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: auto;
+    background-color: #f0f0f0;
+    border-radius: 0.5rem;
+    position: relative;
+    height: calc(100vh - 250px);
+    min-height: 450px;
+    max-height: 650px;
+  }
+
+  /* Force-hide cursor when painting/erasing */
+  .hide-cursor { 
+    cursor: none !important; 
+  }
+  
+  .hide-cursor * {
+    cursor: none !important;
+  }
+
+  #canvas-container {
+    position: relative;
+    display: inline-block;
+    transform-origin: center center;
+    transition: transform 0.1s ease-out;
+    margin: auto;
+  }
+
+  canvas {
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    image-rendering: auto;
+    cursor: default;
+    display: block;
+    margin: auto;
+  }
+
+  #base {
+    z-index: 0;
+  }
+
+  #mask-layer {
+    position: absolute;
+    top: 0; 
+    left: 0;
+    opacity: 1;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  #cursor-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    z-index: 999; /* keep cursor preview on top */
+  }
+
+  .hint {
+    margin-top: 0.25rem;
+    font-size: 0.7rem;
+    color: #6b7280;
+    flex-shrink: 0;
+    text-align: center;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 0.25rem;
+  }
+
+  .hint p {
+    margin: 0.25rem 0;
+  }
+
+  .warning {
+    color: #dc2626;
+    margin-top: 0.5rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+  }
+
+  #save.saving {
+    background-color: #6b7280;
+    cursor: wait;
+  }
+
+  .editor-wrapper::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+  
+  .editor-wrapper::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 6px;
+  }
+  
+  .editor-wrapper::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 6px;
+  }
+  
+  .editor-wrapper::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+  }
+
+
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type=number] {
+    -moz-appearance: textfield;
+  }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const is3D = false;  // Always false for incorrect layer editing
+const maxZ = 0;     // Only slice 0 for incorrect layer editing
+let z = 0;          // Always 0 for incorrect layer editing
+let paintBrush = 8, eraseBrush = 8, brush = paintBrush;
+let mode = 'add', drawing = false, isNavigating = false;
+const CACHE_KEY = 'proofreadingLayerCache';
+const initialLayerId = {{ current_layer.id|tojson if current_layer is defined else '""' }};
+const initialLayerZ = {{ current_layer.z if current_layer is defined else 0 }};
+const initialIncorrectLayers = {{ incorrect_layers | tojson }};
+let incorrectLayersData = Array.isArray(initialIncorrectLayers) ? initialIncorrectLayers : [];
+let currentLayerIndex = {{ layer_index }};
+let totalIncorrect = {{ total_incorrect }};
+let currentLayerId = initialLayerId;
+let layerKey = initialLayerId || `layer_${initialLayerZ}`;
+const undoStacks = {}, redoStacks = {}; // per-slice undo/redo
+let lastBrushX = null, lastBrushY = null; // Track last brush position for smooth drawing
+
+function loadLayerCache() {
+  try {
+    if (typeof sessionStorage === 'undefined') return {};
+    const raw = sessionStorage.getItem(CACHE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (err) {
+    console.warn('Unable to parse proofreading cache', err);
+    return {};
+  }
+}
+
+function writeLayerCache(cacheObj) {
+  try {
+    if (typeof sessionStorage === 'undefined') return;
+    sessionStorage.setItem(CACHE_KEY, JSON.stringify(cacheObj));
+  } catch (err) {
+    console.warn('Unable to persist proofreading cache', err);
+  }
+}
+
+let layerCache = loadLayerCache();
+if (!layerKey) layerKey = 'layer_0';
+let currentLayerEdit = layerCache[layerKey] || null;
+const dirtyLayers = {};
+dirtyLayers[layerKey] = dirtyLayers[layerKey] || false;
+
+const base = document.getElementById('base');
+const mask = document.getElementById('mask-layer');
+const cursor = document.getElementById('cursor-layer');
+const bctx = base.getContext('2d');
+const mctx = mask.getContext('2d');
+const cctx = cursor.getContext('2d');
+const container = document.getElementById('canvas-container');
+const editorWrapper = document.getElementById('editor-wrapper');
+const currentLayerLabel = document.querySelector('.current-layer');
+const layerProgressLabel = document.querySelector('.layer-progress');
+const prevLayerBtn = document.getElementById('prev-layer');
+const nextLayerBtn = document.getElementById('next-layer');
+const layerIndexInput = document.getElementById('z');
+const dimImageEl = document.getElementById('dim-image');
+const dimMaskEl = document.getElementById('dim-mask');
+const dimLayerEl = document.getElementById('dim-layer');
+if (prevLayerBtn) prevLayerBtn.addEventListener('click', () => goToIndex(currentLayerIndex - 1));
+if (nextLayerBtn) nextLayerBtn.addEventListener('click', () => goToIndex(currentLayerIndex + 1));
+
+/* ---- Mask toggle ---- */
+const toggleBtn = document.getElementById('toggle-mask');
+let maskVisible = true;
+toggleBtn.onclick = () => {
+  maskVisible = !maskVisible;
+  mask.style.visibility = maskVisible ? 'visible' : 'hidden';
+  toggleBtn.textContent = maskVisible ? 'Hide Mask' : 'Show Mask';
+};
+
+/* ---- Zoom ---- */
+let zoom = 1;
+const minZoom = 0.1, maxZoom = 10.0;
+editorWrapper.addEventListener('wheel', (e) => {
+  if (!e.metaKey) return;
+  e.preventDefault();
+  const delta = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+  const newZoom = Math.min(maxZoom, Math.max(minZoom, zoom * delta));
+  
+  zoom = newZoom;
+  container.style.transform = `scale(${zoom})`;
+}, { passive: false });
+
+/* ---- Brushes ---- */
+document.getElementById('paint-brush').oninput = e => {
+  paintBrush = parseInt(e.target.value, 10);
+  if (mode === 'add') {
+    brush = paintBrush;
+    // Redraw cursor preview with new size when in paint mode
+    redrawCursorPreview();
+  }
+};
+document.getElementById('erase-brush').oninput = e => {
+  eraseBrush = parseInt(e.target.value, 10);
+  if (mode === 'erase') {
+    brush = eraseBrush;
+    // Redraw cursor preview with new size when in erase mode
+    redrawCursorPreview();
+  }
+};
+
+/* ---- Mode toggle ---- */
+function setMode(newMode) {
+  mode = newMode;
+  
+  // Update button classes for active mode
+  const addBtn = document.getElementById('mode-add');
+  const eraseBtn = document.getElementById('mode-erase');
+  
+  // Reset all buttons
+  [addBtn, eraseBtn].forEach(btn => {
+    btn.classList.remove('active-mode', 'btn-success');
+    btn.classList.add('btn-secondary');
+  });
+  
+  if (newMode === 'add') {
+    addBtn.classList.add('active-mode', 'btn-success');
+    addBtn.classList.remove('btn-secondary');
+    brush = paintBrush;
+    redrawCursorPreview();
+    // Hide system cursor; show our circle preview
+    [base, mask, cursor, container, editorWrapper].forEach(el => el.classList.add('hide-cursor'));
+    console.log('🖌️ Switched to Paint mode');
+  } else if (newMode === 'erase') {
+    eraseBtn.classList.add('active-mode', 'btn-success');
+    eraseBtn.classList.remove('btn-secondary');
+    brush = eraseBrush;
+    redrawCursorPreview();
+    // Hide system cursor; show our circle preview
+    [base, mask, cursor, container, editorWrapper].forEach(el => el.classList.add('hide-cursor'));
+    console.log('🧽 Switched to Erase mode');
+  }
+}
+
+document.getElementById('mode-add').onclick  = ()=>setMode('add');
+document.getElementById('mode-erase').onclick= ()=>setMode('erase');
+
+/* ---- Slice navigation ---- */
+// Enhanced keyboard navigation for both 3D and proofreading modes
+const zInput = document.getElementById('z');
+const zInc   = document.getElementById('z-inc');
+const zDec   = document.getElementById('z-dec');
+
+async function gotoSlice(newZ) {
+  if (isNavigating) return;
+  newZ = Math.max(0, Math.min(maxZ, newZ|0));
+  if (newZ === z) return;
+
+  isNavigating = true;
+  try {
+    if (dirtyLayers[layerKey]) { await cacheCurrentSlice(); }
+    z = newZ;
+    if (zInput && zInput.value != z + 1) zInput.value = z + 1;
+    await loadSlice();
+  } finally { isNavigating = false; }
+}
+
+// Add event listeners if elements exist (for 3D mode)
+if (zInc) zInc.addEventListener('click', () => {
+  if (is3D) gotoSlice(z + 1);
+  else goToIndex(currentLayerIndex + 1);
+});
+if (zDec) zDec.addEventListener('click', () => {
+  if (is3D) gotoSlice(z - 1);
+  else goToIndex(currentLayerIndex - 1);
+});
+if (zInput) zInput.addEventListener('change', () => {
+  const target = parseInt(zInput.value, 10);
+  if (Number.isNaN(target)) return;
+  if (is3D) gotoSlice(target - 1);
+  else goToIndex(target - 1);
+});
+
+// Enhanced keyboard navigation for all modes
+window.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  
+  // Navigation keys - for proofreading, navigate between incorrect layers
+  if (['a', 'A', 'ArrowLeft'].includes(e.key)) {
+    e.preventDefault();
+    goToIndex(currentLayerIndex - 1);
+  }
+  else if (['d', 'D', 'ArrowRight'].includes(e.key)) {
+    e.preventDefault();
+    goToIndex(currentLayerIndex + 1);
+  }
+  // Mode switching keys
+  else if (['p', 'P'].includes(e.key)) {
+    e.preventDefault();
+    setMode('add');
+    console.log('🖌️ Switched to Paint mode (P key)');
+  }
+  else if (['e', 'E'].includes(e.key)) {
+    e.preventDefault();
+    setMode('erase');
+    console.log('🧽 Switched to Erase mode (E key)');
+  }
+});
+
+window.gotoSlice = gotoSlice;
+
+// --- Incorrect-layer slice control (acts as layer navigator) ---
+{% if incorrect_layers %}
+(() => {
+  const incorrectLayers = {{ incorrect_layers | tojson }};
+  const currentLayerIndex = {{ layer_index }};
+  const totalIncorrect = {{ total_incorrect }};
+  const zInput = document.getElementById('z');
+  const zInc = document.getElementById('z-inc');
+  const zDec = document.getElementById('z-dec');
+  if (zInput){
+    zInput.min = 1;
+    zInput.max = Math.max(1, totalIncorrect);
+    zInput.value = currentLayerIndex + 1;
+  }
+  async function goToIndex(idx){
+    idx = Math.max(0, Math.min(totalIncorrect - 1, idx|0));
+    if (idx === currentLayerIndex) return;
+    const target = incorrectLayers[idx];
+    if (target && target.id){ await navigateTo(`/proofreading/edit/${target.id}`); }
+  }
+  zInc?.addEventListener('click', () => goToIndex(currentLayerIndex + 1));
+  zDec?.addEventListener('click', () => goToIndex(currentLayerIndex - 1));
+  zInput?.addEventListener('change', () => {
+    const target = parseInt(zInput.value, 10);
+    if (!Number.isNaN(target)) {
+      goToIndex(target - 1);
+    }
+  });
+})();
+{% endif %}
+
+/* ---- Load slice ---- */
+async function loadSlice(){
+  const [imgBlob, maskBlob] = await Promise.all([
+    fetch(`/api/slice/${is3D?z:0}`).then(r=>r.blob()),
+    fetch(`/api/mask/${is3D?z:0}`).then(r=>r.blob())
+  ]);
+  const [imgBitmap, maskBitmap] = await Promise.all([
+    createImageBitmap(imgBlob), createImageBitmap(maskBlob)
+  ]);
+  
+  // Set canvas dimensions
+  [base.width, base.height] = [imgBitmap.width, imgBitmap.height];
+  [mask.width, mask.height] = [maskBitmap.width, maskBitmap.height];
+  [cursor.width, cursor.height] = [imgBitmap.width, imgBitmap.height];
+  
+  // Ensure cursor canvas is visible and properly set up
+  cursor.style.position = 'absolute';
+  cursor.style.top = '0';
+  cursor.style.left = '0';
+  
+  // Canvas size validation - ensure base and mask canvases match
+  if (base.width !== mask.width || base.height !== mask.height) {
+    console.warn('Canvas size mismatch detected - forcing mask to match base canvas');
+    [mask.width, mask.height] = [base.width, base.height];
+  }
+  
+  bctx.drawImage(imgBitmap, 0, 0);
+
+  maskVisible = true;
+  mask.style.visibility = 'visible';
+  toggleBtn.textContent = 'Hide Mask';
+
+  mctx.clearRect(0,0,mask.width,mask.height);
+
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = maskBitmap.width;
+  tempCanvas.height = maskBitmap.height;
+  const tempCtx = tempCanvas.getContext('2d');
+  tempCtx.drawImage(maskBitmap, 0, 0);
+
+  const rgbaData = tempCtx.getImageData(0, 0, maskBitmap.width, maskBitmap.height);
+  const overlayRGBA = mctx.createImageData(mask.width, mask.height);
+  const rgbaPixels = rgbaData.data;
+  const overlayPixels = overlayRGBA.data;
+
+  for (let i = 0; i < rgbaPixels.length; i += 4) {
+    const r = rgbaPixels[i];
+    const g = rgbaPixels[i + 1];
+    const b = rgbaPixels[i + 2];
+    const a = rgbaPixels[i + 3];
+    const isMaskPixel = (a > 50 && (r > 200 || g > 200 || b > 200));
+    if (isMaskPixel) {
+      overlayPixels[i] = 255;
+      overlayPixels[i + 1] = 255;
+      overlayPixels[i + 2] = 255;
+      overlayPixels[i + 3] = 230;
+    } else {
+      overlayPixels[i + 3] = 0;
+    }
+  }
+
+  mctx.putImageData(overlayRGBA, 0, 0);
+
+  if (currentLayerEdit) {
+    await applyOverlayFromBase64(currentLayerEdit);
+  }
+  undoStacks[z] = undoStacks[z] || [];
+  redoStacks[z] = redoStacks[z] || [];
+  
+  // Update file/mask label
+  try {
+    const meta = await fetch('/api/names_current').then(r=>r.json());
+    const info = document.getElementById('file-info');
+    if (meta && (meta.image || meta.mask)) {
+      const imgName = meta.image || '—';
+      const maskName = meta.mask || 'None';
+      info.innerHTML = `<strong>File:</strong> ${imgName} &nbsp; <strong>Mask:</strong> ${maskName}`;
+    }
+  } catch(e) {}
+}
+loadSlice();
+
+function applyOverlayFromBase64(b64) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.src = "data:image/png;base64," + b64;
+    img.onload = () => {
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = mask.width;
+      tempCanvas.height = mask.height;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.drawImage(img, 0, 0);
+      const grayData = tempCtx.getImageData(0, 0, mask.width, mask.height);
+      const overlayData = mctx.createImageData(mask.width, mask.height);
+      const grayPixels = grayData.data;
+      const overlayPixelsEdit = overlayData.data;
+      for (let i = 0; i < grayPixels.length; i += 4) {
+        const gray = grayPixels[i];
+        if (gray > 0) {
+          overlayPixelsEdit[i] = 255;
+          overlayPixelsEdit[i + 1] = 255;
+          overlayPixelsEdit[i + 2] = 255;
+          overlayPixelsEdit[i + 3] = 230;
+        } else {
+          overlayPixelsEdit[i + 3] = 0;
+        }
+      }
+      mctx.globalCompositeOperation = 'source-over';
+      mctx.putImageData(overlayData, 0, 0);
+      resolve();
+    };
+    img.onerror = resolve;
+  });
+}
+
+const initialVolumeShape = {{ volume_shape | tojson if volume_shape else 'null' }};
+const initialMaskShape = {{ mask_shape | tojson if mask_shape else 'null' }};
+let currentVolumeShape = initialVolumeShape;
+let currentMaskShape = initialMaskShape;
+
+function formatDims(shape){
+  if (!Array.isArray(shape) || shape.length < 2) return 'N/A';
+  const parts = shape.slice();
+  let text = `${parts[0]} × ${parts[1]} pixels`;
+  if (parts.length > 2) {
+    text += ` (${parts[2]} channels)`;
+  }
+  return text;
+}
+
+function updateLayerUI(meta = {}){
+  const layerData = meta.current_layer || incorrectLayersData[currentLayerIndex];
+  const totalLayers = Math.max(totalIncorrect || 0, incorrectLayersData.length || 0);
+  const sliceNum = layerData && typeof layerData.z === 'number' ? layerData.z + 1 : currentLayerIndex + 1;
+
+  if (currentLayerLabel) {
+    currentLayerLabel.textContent = `Layer ${sliceNum} (Slice ${sliceNum})`;
+  }
+  if (layerProgressLabel && totalLayers) {
+    layerProgressLabel.textContent = `${currentLayerIndex + 1} of ${totalLayers} incorrect`;
+  }
+  if (layerIndexInput) {
+    layerIndexInput.max = Math.max(1, totalLayers);
+    layerIndexInput.value = currentLayerIndex + 1;
+  }
+  if (prevLayerBtn) prevLayerBtn.disabled = currentLayerIndex <= 0;
+  if (nextLayerBtn) nextLayerBtn.disabled = currentLayerIndex >= totalLayers - 1;
+
+  currentVolumeShape = meta.volume_shape || currentVolumeShape;
+  currentMaskShape = meta.mask_shape !== undefined ? meta.mask_shape : currentMaskShape;
+
+  if (dimImageEl && currentVolumeShape) {
+    dimImageEl.innerHTML = `<strong>Image:</strong> ${formatDims(currentVolumeShape)}`;
+  }
+  if (dimMaskEl) {
+    dimMaskEl.innerHTML = `<strong>Mask:</strong> ${currentMaskShape ? formatDims(currentMaskShape) : 'N/A'}`;
+  }
+  if (dimLayerEl) {
+    dimLayerEl.innerHTML = `<strong>Current Layer:</strong> Slice ${sliceNum} (${currentLayerIndex + 1} of ${totalLayers || 1} incorrect layers)`;
+  }
+}
+
+async function loadLayerById(layerId, targetIndex = null){
+  if (!layerId) return false;
+  await persistLayerEdits();
+  try {
+    const response = await fetch('/proofreading/api/load_layer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ layer_id: layerId })
+    });
+    const data = await response.json();
+    if (!data.success) throw new Error(data.error || 'Failed to load layer');
+
+    if (Array.isArray(data.incorrect_layers)) {
+      incorrectLayersData = data.incorrect_layers;
+    }
+    totalIncorrect = data.total_incorrect ?? incorrectLayersData.length ?? totalIncorrect;
+    currentLayerIndex = typeof targetIndex === 'number' ? targetIndex : data.layer_index;
+    currentLayerId = layerId;
+    const fallbackZ = data.current_layer?.z ?? currentLayerIndex ?? 0;
+    layerKey = layerId || `layer_${fallbackZ}`;
+    currentLayerEdit = layerCache[layerKey] || null;
+    if (!(layerKey in dirtyLayers)) dirtyLayers[layerKey] = false;
+
+    await loadSlice();
+    updateLayerUI(data);
+    return true;
+  } catch (err) {
+    console.error(err);
+    alert(err.message || 'Unable to switch layers');
+    return false;
+  }
+}
+
+async function goToIndex(idx){
+  if (!incorrectLayersData.length) return;
+  const clamped = Math.max(0, Math.min(idx, incorrectLayersData.length - 1));
+  if (clamped === currentLayerIndex) {
+    if (layerIndexInput) layerIndexInput.value = currentLayerIndex + 1;
+    return;
+  }
+  const target = incorrectLayersData[clamped];
+  if (!target || !target.id) return;
+  await loadLayerById(target.id, clamped);
+}
+
+updateLayerUI({
+  current_layer: incorrectLayersData[currentLayerIndex] || null,
+  volume_shape: currentVolumeShape,
+  mask_shape: currentMaskShape
+});
+
+/* ---- Painting + History ---- */
+base.onmousedown = e => { 
+  pushHistory(); 
+  drawing = true; 
+  lastBrushX = null; 
+  lastBrushY = null; // Reset position tracking
+  paint(e); 
+};
+base.onmousemove = e => { if(drawing) paint(e); };
+window.onmouseup  = ()=> { 
+  drawing = false; 
+  lastBrushX = null; 
+  lastBrushY = null; // Reset position tracking
+  dirtyLayers[layerKey] = true;
+};
+
+// Circular brush cursor preview only for paint/erase
+let lastCursorX = null, lastCursorY = null;
+function redrawCursorPreview(x, y){
+  if (!(mode === 'add' || mode === 'erase')) {
+    cctx.clearRect(0,0,cursor.width,cursor.height);
+    return;
+  }
+  if (x === undefined || y === undefined) {
+    x = lastCursorX;
+    y = lastCursorY;
+  }
+  if (x === null || y === null) return;
+  
+  cctx.clearRect(0,0,cursor.width,cursor.height);
+  // Inner bright ring
+  cctx.beginPath();
+  cctx.strokeStyle = 'rgba(255,255,255,0.95)';
+  cctx.lineWidth = 1.5;
+  cctx.arc(x, y, brush, 0, Math.PI*2);
+  cctx.stroke();
+  // Outer dark ring for contrast
+  cctx.beginPath();
+  cctx.strokeStyle = 'rgba(0,0,0,0.6)';
+  cctx.lineWidth = 1;
+  cctx.arc(x, y, brush + 1, 0, Math.PI*2);
+  cctx.stroke();
+}
+
+function updateCursorPosition(e) {
+  const rect = base.getBoundingClientRect();
+  const scaleX = base.width / rect.width;
+  const scaleY = base.height / rect.height;
+  lastCursorX = Math.round((e.clientX - rect.left) * scaleX);
+  lastCursorY = Math.round((e.clientY - rect.top) * scaleY);
+  redrawCursorPreview();
+}
+
+// Track mouse on canvas and container for cursor preview
+base.addEventListener('mousemove', updateCursorPosition);
+container.addEventListener('mousemove', updateCursorPosition);
+base.addEventListener('mouseleave', ()=> {
+  lastCursorX = lastCursorY = null;
+  cctx.clearRect(0,0,cursor.width,cursor.height);
+});
+container.addEventListener('mouseleave', ()=> {
+  lastCursorX = lastCursorY = null;
+  cctx.clearRect(0,0,cursor.width,cursor.height);
+});
+
+function paint(e){
+  const rect = base.getBoundingClientRect();
+  
+  // Improved coordinate mapping with bounds checking
+  const scaleX = base.width / rect.width;
+  const scaleY = base.height / rect.height;
+  const x = Math.round((e.clientX - rect.left) * scaleX);
+  const y = Math.round((e.clientY - rect.top) * scaleY);
+  
+  // Ensure coordinates are within canvas bounds
+  const clampedX = Math.max(0, Math.min(base.width - 1, x));
+  const clampedY = Math.max(0, Math.min(base.height - 1, y));
+  
+  if (mode === 'add') {
+    mctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    mctx.globalCompositeOperation = 'source-over';
+  } else {
+    mctx.fillStyle = 'rgba(0, 0, 0, 1)';
+    mctx.globalCompositeOperation = 'destination-out';
+  }
+  
+  // Draw smooth brush strokes by connecting points with filled circles
+  if (lastBrushX !== null && lastBrushY !== null) {
+    // Calculate distance between points for smooth interpolation
+    const dx = clampedX - lastBrushX;
+    const dy = clampedY - lastBrushY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    if (distance > 0) {
+      // Interpolate between points to fill gaps
+      const steps = Math.ceil(distance / (brush / 2));
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const interpX = lastBrushX + dx * t;
+        const interpY = lastBrushY + dy * t;
+        
+        mctx.beginPath();
+        mctx.arc(interpX, interpY, brush, 0, 2*Math.PI);
+        mctx.fill();
+      }
+    }
+  }
+  
+  // Draw current brush position (filled circle)
+  mctx.beginPath();
+  mctx.arc(clampedX, clampedY, brush, 0, 2*Math.PI);
+  mctx.fill();
+
+  // Reset composite so future operations default to normal drawing
+  mctx.globalCompositeOperation = 'source-over';
+  
+  // Update last position for smooth drawing
+  lastBrushX = clampedX;
+  lastBrushY = clampedY;
+  dirtyLayers[layerKey] = true;
+}
+
+/* ---- Undo / Redo ---- */
+function pushHistory(){
+  const stack = undoStacks[z] = undoStacks[z] || [];
+  if (stack.length > 50) stack.shift(); // limit memory
+  stack.push(mctx.getImageData(0,0,mask.width,mask.height));
+  redoStacks[z] = []; // clear redo when new paint
+}
+
+function undo(){
+  const stack = undoStacks[z] || [];
+  if (!stack.length) return;
+  const redoStack = redoStacks[z] = redoStacks[z] || [];
+  redoStack.push(mctx.getImageData(0,0,mask.width,mask.height));
+  const prev = stack.pop();
+  if (prev) mctx.putImageData(prev,0,0);
+  dirtyLayers[layerKey] = true;
+}
+function redo(){
+  const stack = redoStacks[z] || [];
+  if (!stack.length) return;
+  const undoStack = undoStacks[z] = undoStacks[z] || [];
+  undoStack.push(mctx.getImageData(0,0,mask.width,mask.height));
+  const next = stack.pop();
+  if (next) mctx.putImageData(next,0,0);
+  dirtyLayers[layerKey] = true;
+}
+
+document.getElementById('undo').onclick = undo;
+document.getElementById('redo').onclick = redo;
+window.addEventListener('keydown', e=>{
+  if (e.metaKey || e.ctrlKey){
+    if (e.key === 'z' && !e.shiftKey){ e.preventDefault(); undo(); }
+    else if ((e.key === 'Z' && e.shiftKey) || (e.key==='y')){ e.preventDefault(); redo(); }
+  }
+});
+
+/* ---- Cache slice (safe Base64 encoder) ---- */
+async function cacheCurrentSlice(){
+  const maskData = mctx.getImageData(0, 0, mask.width, mask.height);
+  const pixels = maskData.data;
+
+  const grayscaleData = mctx.createImageData(mask.width, mask.height);
+  const grayPixels = grayscaleData.data;
+
+  for (let i = 0; i < pixels.length; i += 4) {
+    const r = pixels[i];
+    const g = pixels[i + 1];
+    const b = pixels[i + 2];
+    const a = pixels[i + 3];
+    
+    const isMaskOverlay = (a > 50 && (r > 200 || g > 200 || b > 200));
+    
+    if (isMaskOverlay) {
+      grayPixels[i] = 255;
+      grayPixels[i + 1] = 255;
+      grayPixels[i + 2] = 255;
+      grayPixels[i + 3] = 255;
+    } else {
+      grayPixels[i] = 0;
+      grayPixels[i + 1] = 0;
+      grayPixels[i + 2] = 0;
+      grayPixels[i + 3] = 0;
+    }
+  }
+  
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = mask.width;
+  tempCanvas.height = mask.height;
+  const tempCtx = tempCanvas.getContext('2d');
+  tempCtx.putImageData(grayscaleData, 0, 0);
+  
+  const blob = await new Promise(res => tempCanvas.toBlob(res, 'image/png'));
+  const buf = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  const b64 = btoa(binary);
+  currentLayerEdit = b64;
+  layerCache[layerKey] = b64;
+  dirtyLayers[layerKey] = false;
+  writeLayerCache(layerCache);
+  return b64;
+}
+
+async function persistLayerEdits(){
+  if (!layerKey) return;
+  if (dirtyLayers[layerKey]) {
+    await cacheCurrentSlice();
+  } else if (currentLayerEdit && !layerCache[layerKey]) {
+    layerCache[layerKey] = currentLayerEdit;
+    writeLayerCache(layerCache);
+  }
+}
+
+async function navigateTo(url){
+  await persistLayerEdits();
+  window.location.href = url;
+}
+
+/* ---- Save all slices ---- */
+document.getElementById('save').onclick = async ()=>{
+  const saveBtn = document.getElementById('save');
+  saveBtn.classList.add('saving');
+  saveBtn.textContent = 'Saving...';
+  try {
+    if (dirtyLayers[layerKey] || !currentLayerEdit) { await cacheCurrentSlice(); }
+
+    const pngData = currentLayerEdit || layerCache[layerKey];
+    const batch = pngData ? [{ z: 0, png: pngData }] : [];
+    if (!batch.length) throw new Error('No changes to save.');
+
+    const r = await fetch('/api/mask/update', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ full_batch: batch })
+    });
+    const resp = await r.json();
+    if (!resp.success) throw new Error(resp.error || 'Mask update failed');
+
+    const fin = await fetch('/api/save', { method:'POST' });
+    const data = await fin.json();
+    if (!data.success) throw new Error(data.error || 'Save incomplete');
+
+    await loadSlice();
+    delete layerCache[layerKey];
+    writeLayerCache(layerCache);
+    currentLayerEdit = null;
+    dirtyLayers[layerKey] = false;
+    saveBtn.textContent = 'Saved!';
+  } catch (err){
+    console.error(err); alert(err.message);
+  } finally {
+    setTimeout(()=>{ saveBtn.textContent='Save'; saveBtn.classList.remove('saving'); },1000);
+  }
+};
+setMode('add');
+
+/* ---- Layer Navigation ---- */
+{% if incorrect_layers %}
+document.getElementById('mark-corrected')?.addEventListener('click', async () => {
+  const currentLayerId = '{{ current_layer.id }}';
+  
+  try {
+    const response = await fetch('/api/mark_corrected', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ layer_id: currentLayerId })
+    });
+    
+    const result = await response.json();
+    if (result.success) {
+      alert('Layer marked as corrected!');
+      delete layerCache[layerKey];
+      writeLayerCache(layerCache);
+      currentLayerEdit = null;
+      dirtyLayers[layerKey] = false;
+      
+      // Navigate to next layer or back to selection
+      if (currentLayerIndex < incorrectLayersData.length - 1) {
+        const nextLayer = incorrectLayersData[currentLayerIndex + 1];
+        await navigateTo(`/proofreading/edit/${nextLayer.id}`);
+      } else {
+        await navigateTo('/proofreading');
+      }
+    } else {
+      alert('Error marking layer as corrected: ' + (result.error || 'Unknown error'));
+    }
+  } catch (error) {
+    console.error('Error marking as corrected:', error);
+    alert('Error marking layer as corrected: ' + error.message);
+  }
+});
+
+document.getElementById('back-to-selection')?.addEventListener('click', () => {
+  navigateTo('/proofreading');
+});
+{% endif %}
+</script>
+
+<script>
+  // Inline dataset toggle logic
+  (function () {
+    const pathBox = document.getElementById('inline-path');
+    const uploadBox = document.getElementById('inline-upload');
+    document.querySelectorAll('input[name="load_mode"]').forEach(r => {
+      r.addEventListener('change', e => {
+        const useUpload = e.target.value === 'upload';
+        uploadBox.style.display = useUpload ? 'block' : 'none';
+        pathBox.style.display   = useUpload ? 'none'  : 'block';
+      });
+    });
+  })();
+</script>
+
+<script>
+  // --- Display inline image dimensions ---
+  const imgInput = document.querySelector('#inline-upload input[name="image_file"]');
+  imgInput?.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch("/api/dims", { method: "POST", body: formData });
+      const data = await res.json();
+
+      const span = document.getElementById("inline-dim-info");
+      if (span) {
+        span.style.color = "#555";
+        span.style.fontSize = "0.9em";  // slightly smaller for editor
+        span.style.whiteSpace = "nowrap";
+
+        if (data.shape) {
+          span.textContent = "Image Dimensions: " + data.shape.join(" × ");
+        } else {
+          span.textContent = "Error: " + (data.error || "could not read image");
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching image dims:", err);
+    }
+  });
+
+  // --- Display inline mask dimensions ---
+  const maskInput = document.querySelector('#inline-upload input[name="mask_file"]');
+  maskInput?.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch("/api/dims", { method: "POST", body: formData });
+      const data = await res.json();
+
+      const span = document.getElementById("inline-mask-dim-info");
+      if (span) {
+        span.style.color = "#555";
+        span.style.fontSize = "0.9em";  // consistent small font
+        span.style.whiteSpace = "nowrap";
+
+        if (data.shape) {
+          span.textContent = "Mask dimensions: " + data.shape.join(" × ");
+        } else {
+          span.textContent = "Error: " + (data.error || "could not read mask");
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching mask dims:", err);
+    }
+  });
+</script>
+{% endblock %}

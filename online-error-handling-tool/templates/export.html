@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}Export - Integration & Export{% endblock %}
+{% block page_title %}Export & Integration{% endblock %}
+
+{% block content %}
+<div class="export-container">
+  <div class="page-navigation">
+    <button id="back-to-review" class="btn btn-secondary">← Back to Review</button>
+  </div>
+  
+  <div class="export-header">
+    <h2>Export Session Data</h2>
+    <p>Export your annotations and session data for integration with PFTool or other tools.</p>
+  </div>
+
+  <div class="export-summary">
+    <h3>Session Summary</h3>
+    <div class="summary-grid">
+      <div class="summary-card">
+        <div class="summary-number">{{ progress.total }}</div>
+        <div class="summary-label">Total Layers</div>
+      </div>
+      <div class="summary-card correct">
+        <div class="summary-number">{{ progress.correct }}</div>
+        <div class="summary-label">Correct</div>
+      </div>
+      <div class="summary-card incorrect">
+        <div class="summary-number">{{ progress.incorrect }}</div>
+        <div class="summary-label">Incorrect</div>
+      </div>
+      <div class="summary-card unsure">
+        <div class="summary-number">{{ progress.unsure }}</div>
+        <div class="summary-label">Unsure</div>
+      </div>
+    </div>
+    
+    <div class="completion-info">
+      <div class="completion-bar">
+        <div class="completion-fill" style="width: {{ (progress.completion_rate * 100) | round(1) }}%"></div>
+      </div>
+      <span class="completion-text">{{ (progress.completion_rate * 100) | round(1) }}% Complete</span>
+    </div>
+  </div>
+
+  <div class="export-options">
+    <h3>Export Options</h3>
+    
+    <div class="export-cards">
+      <div class="export-card">
+        <h4>Complete Session Export</h4>
+        <p>Export all session data including layers, annotations, and metadata.</p>
+        <div class="export-actions">
+          <button class="btn btn-primary" id="export-session-json">Export as JSON</button>
+          <button class="btn btn-secondary" id="export-session-csv">Export as CSV</button>
+        </div>
+      </div>
+      
+      <div class="export-card">
+        <h4>Proofreading Queue</h4>
+        <p>Export layers marked as incorrect for proofreading integration.</p>
+        <div class="export-info">
+          <span class="info-text">{{ export_summary.incorrect_layers }} layers ready for proofreading</span>
+        </div>
+        <div class="export-actions">
+          <button class="btn btn-primary" id="export-proofreading-queue">Export Queue</button>
+        </div>
+      </div>
+      
+      <div class="export-card">
+        <h4>Integrated Proofreading</h4>
+        <p>Open the integrated proofreading interface with incorrect layers.</p>
+        <div class="export-info">
+          <span class="info-text">{{ export_summary.incorrect_layers }} incorrect layers ready for proofreading</span>
+        </div>
+        <div class="export-actions">
+          <button class="btn btn-success" id="open-proofreading">Open Proofreading</button>
+        </div>
+      </div>
+      
+    </div>
+  </div>
+
+  <div class="export-history">
+    <h3>Export History</h3>
+    <div class="history-controls">
+      <button class="btn btn-secondary" id="refresh-history">Refresh</button>
+      <button class="btn btn-danger" id="clear-history">Clear History</button>
+    </div>
+    <div id="export-history-list" class="history-list">
+      <!-- Export history will be loaded here -->
+    </div>
+  </div>
+
+  <div class="export-footer">
+    <div class="footer-info">
+      <p>Export your session data for integration with PFTool or other proofreading tools.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Export Progress Modal -->
+<div id="export-progress-modal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Exporting...</h3>
+    </div>
+    <div class="modal-body">
+      <div class="progress-container">
+        <div class="progress-bar">
+          <div class="progress-fill" id="export-progress-fill"></div>
+        </div>
+        <div class="progress-text" id="export-progress-text">Preparing export...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Export Result Modal -->
+<div id="export-result-modal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Export Complete</h3>
+      <button class="modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="export-result-content">
+        <!-- Export result will be displayed here -->
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" id="download-export">Download File</button>
+      <button class="btn btn-secondary modal-close">Close</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/export.js') }}"></script>
+<script>
+// Initialize export interface
+document.addEventListener('DOMContentLoaded', function() {
+  const exportInterface = new ExportInterface();
+  exportInterface.init();
+});
+</script>
+{% endblock %}

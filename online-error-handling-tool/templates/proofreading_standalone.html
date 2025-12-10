@@ -1,0 +1,1278 @@
+{% extends "base.html" %}
+
+{% block title %}Proofreading – Editor{% endblock %}
+{% block page_title %}Proofreading Editor{% endblock %}
+
+{% block content %}
+<div class="editor-container">
+  <div class="editor-header">
+
+    <div class="toolbar">
+      <div class="toolbar-group">
+        <label>Paint Brush
+          <input id="paint-brush" type="range" min="1" max="64" value="8">
+        </label>
+        <label>Erase Brush
+          <input id="erase-brush" type="range" min="1" max="64" value="8">
+        </label>
+      </div>
+
+      <div class="toolbar-group">
+        <button id="mode-add" class="btn btn-success active-mode">🖌️ Paint</button>
+        <button id="mode-erase" class="btn btn-secondary">🧽 Erase</button>
+      </div>
+
+      {% if mode3d %}
+      <div class="toolbar-group">
+        <label>Slice
+          <span class="slice-ctrl">
+          <button type="button" id="z-dec" class="btn btn-sm" aria-label="Previous slice">−</button>
+          <input id="z" type="number" min="1" max="{{ num_slices }}" step="1" value="1"
+                   inputmode="numeric">
+            <button type="button" id="z-inc" class="btn btn-sm" aria-label="Next slice">+</button>
+          </span>
+        </label>
+      </div>
+      {% endif %}
+
+      <div class="toolbar-group">
+        <button id="undo" class="btn btn-secondary">Undo</button>
+        <button id="redo" class="btn btn-secondary">Redo</button>
+        <button id="toggle-mask" class="btn btn-warning">Hide Mask</button>
+        <button id="save" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+
+    <div class="editor-wrapper" id="editor-wrapper">
+      <div id="canvas-container">
+        <canvas id="base"></canvas>
+        <canvas id="mask-layer"></canvas>
+        <canvas id="cursor-layer"></canvas>
+      </div>
+    </div>
+
+    <div class="layer-browser" id="layer-browser">
+      <div class="layer-browser-header">
+        <div class="layer-browser-title">
+          <h3>Layer Browser</h3>
+          <p id="layer-browser-summary">Calculating page info…</p>
+        </div>
+        <div class="layer-browser-controls">
+          <button id="layer-prev-page" class="btn btn-sm btn-secondary" disabled>Previous 36</button>
+          <button id="layer-next-page" class="btn btn-sm btn-primary" disabled>Load Next 36</button>
+          <div class="page-input-group">
+            <label for="layer-page-input">Go to page</label>
+            <input type="number" id="layer-page-input" min="1" value="1">
+            <button id="layer-go-button" class="btn btn-sm btn-secondary" disabled>Go</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- File Dimensions Info -->
+  <div class="dimensions-info">
+    <div class="dims-row dims-top">
+      <div class="dim-info">
+        <strong>Image:</strong> {{ volume_shape[0] if volume_shape else 'N/A' }} × {{ volume_shape[1] if volume_shape else 'N/A' }} pixels
+        {% if volume_shape and volume_shape|length > 2 %}
+        ({{ volume_shape[2] }} channels)
+        {% endif %}
+      </div>
+      {% if mask_shape %}
+      <div class="dim-info">
+        <strong>Mask:</strong> {{ mask_shape[0] if mask_shape else 'N/A' }} × {{ mask_shape[1] if mask_shape else 'N/A' }} pixels
+        {% if mask_shape and mask_shape|length > 2 %}
+        ({{ mask_shape[2] }} channels)
+        {% endif %}
+      </div>
+      {% endif %}
+      <div class="dim-info" id="slice-info">
+        <strong>Current Slice:</strong> {{ (slice_index + 1) if slice_index is defined else 'N/A' }}
+        {% if mode3d %}
+        ({{ z + 1 }} of {{ num_slices }} slices)
+        {% endif %}
+      </div>
+    </div>
+    <div class="dims-row dims-files">
+      <div class="dim-info" id="file-info">
+        <strong>File:</strong> —
+      </div>
+    </div>
+    </div>
+
+    <!-- Instructions -->
+    <div class="instructions">
+      <h4>📝 How to Use the Proofreading Tool</h4>
+      <div class="instruction-steps">
+        <div class="step">
+          <span class="step-number">1</span>
+          <div class="step-content">
+            <strong>Select Mode:</strong> Click <span class="btn btn-success btn-sm">🖌️ Paint</span> to add mask areas or <span class="btn btn-secondary btn-sm">🧽 Erase</span> to remove them
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-number">2</span>
+          <div class="step-content">
+            <strong>Adjust Brush:</strong> Use the brush size sliders to set the paint/erase brush size
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-number">3</span>
+          <div class="step-content">
+            <strong>Edit Mask:</strong> Hold and drag the mouse to paint or erase mask areas. The red overlay shows the current mask
+          </div>
+        </div>
+        {% if mode3d %}
+        <div class="step">
+          <span class="step-number">4</span>
+          <div class="step-content">
+            <strong>Navigate:</strong> Use <kbd>A</kbd>/<kbd>D</kbd> or <kbd>←</kbd>/<kbd>→</kbd> to move between slices
+          </div>
+        </div>
+        {% endif %}
+        <div class="step">
+          <span class="step-number">{{ 5 if mode3d else 4 }}</span>
+          <div class="step-content">
+            <strong>Save Changes:</strong> Click <span class="btn btn-primary btn-sm">Save</span> to save your edits to the mask file
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hint">
+      <h4>⌨️ Keyboard Shortcuts</h4>
+      <div class="shortcuts-grid">
+        {% if mode3d %}
+        <div class="shortcut-item">
+          <kbd>A</kbd> or <kbd>←</kbd> <span>Previous slice</span>
+        </div>
+        <div class="shortcut-item">
+          <kbd>D</kbd> or <kbd>→</kbd> <span>Next slice</span>
+        </div>
+        {% endif %}
+        <div class="shortcut-item">
+          <kbd>P</kbd> <span>Paint mode</span>
+        </div>
+        <div class="shortcut-item">
+          <kbd>E</kbd> <span>Erase mode</span>
+        </div>
+        <div class="shortcut-item">
+          <kbd>⌘/Ctrl + Z</kbd> <span>Undo</span>
+        </div>
+        <div class="shortcut-item">
+          <kbd>⌘/Ctrl + Shift + Z</kbd> <span>Redo</span>
+        </div>
+      </div>
+      <p><strong>Mouse:</strong> Hold to paint/erase • <strong>Zoom:</strong> ⌘ Command + Scroll</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  body {
+    margin: 0;
+    padding: 0;
+    overflow: auto;
+  }
+  .main-content {
+    overflow: auto;
+  }
+
+  .editor-container {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 #f1f5f9;
+  }
+
+  .editor-container::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .editor-container::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+  }
+
+  .editor-container::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+  }
+
+  .editor-container::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+
+  .editor-header {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0;
+    height: auto;
+  }
+
+  .editor-header h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #1f2937;
+    margin: 0;
+    padding: 0;
+    line-height: 1;
+    height: auto;
+  }
+
+  .dimensions-info {
+    margin: 0.5rem 0;
+    text-align: center;
+    font-size: 0.75rem;
+    color: #6b7280;
+  }
+
+  .dimension-item {
+    display: inline-block;
+    margin: 0 1rem;
+  }
+
+  .dimension-label {
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: #64748b;
+    margin-right: 0.25rem;
+  }
+
+  .dimension-value {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #1e293b;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  }
+
+  .toolbar {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    margin: 0 0 0.05rem 0;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 0.25rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Active mode styling */
+  .active-mode {
+    background: #10b981 !important;
+    color: white !important;
+    font-weight: 600 !important;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.3) !important;
+    transform: scale(1.05);
+  }
+
+  .btn:not(.active-mode) {
+    opacity: 0.7;
+    transition: all 0.2s ease;
+  }
+
+  .btn:not(.active-mode):hover {
+    opacity: 1;
+    transform: scale(1.02);
+  }
+
+  /* Keyboard Shortcuts Styling */
+  .shortcuts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.75rem;
+    margin: 1rem 0;
+  }
+
+  .shortcut-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+  }
+
+  .shortcut-item kbd {
+    background: #1e293b;
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.75rem;
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+
+  .shortcut-item span {
+    color: #374151;
+    font-weight: 500;
+  }
+
+  .hint h4 {
+    margin: 0 0 0.5rem 0;
+    color: #1e293b;
+    font-size: 1rem;
+  }
+
+  /* Dimensions Info Styling */
+  .dimensions-info {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    margin: 0.75rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .dims-row {
+    display: flex;
+    gap: 0.5rem; /* tighter horizontal spacing */
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center; /* center horizontally */
+  }
+
+  .dim-info {
+    font-size: 0.875rem;
+    color: #374151;
+    background: white;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    border: 1px solid #d1d5db;
+    flex: 0 1 auto;
+    min-width: 180px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.35rem;
+    white-space: nowrap;
+  }
+
+  .dim-info strong {
+    color: #1e293b;
+    font-weight: 600;
+  }
+
+  /* Instructions Styling */
+  .instructions {
+    background: #f0f9ff;
+    border: 1px solid #0ea5e9;
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    margin: 1rem 0;
+  }
+
+  .instructions h4 {
+    margin: 0 0 1rem 0;
+    color: #0c4a6e;
+    font-size: 1.125rem;
+    font-weight: 600;
+  }
+
+  .instruction-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .step {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .step-number {
+    background: #0ea5e9;
+    color: white;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .step-content {
+    flex: 1;
+    font-size: 0.875rem;
+    color: #0c4a6e;
+    line-height: 1.5;
+  }
+
+  .step-content strong {
+    color: #0c4a6e;
+    font-weight: 600;
+  }
+
+  .step-content .btn {
+    margin: 0 0.25rem;
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    pointer-events: none;
+    cursor: default;
+    opacity: 0.8;
+  }
+
+  .toolbar-group {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .toolbar label {
+    font-weight: 500;
+    color: #374151;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .toolbar input[type="range"] {
+    width: 100px;
+  }
+
+  .toolbar input[type="number"] {
+    width: 60px;
+    text-align: center;
+    padding: 0.25rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.25rem;
+  }
+
+  .slice-ctrl {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .editor-wrapper {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: auto;
+    background-color: #f0f0f0;
+    border-radius: 0.5rem;
+    position: relative;
+    height: calc(100vh - 250px);
+    min-height: 450px;
+    max-height: 650px;
+  }
+
+  .layer-browser {
+    margin: 1rem 0;
+    padding: 1rem;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  }
+
+  .layer-browser-header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: center;
+  }
+
+  .layer-browser-title h3 {
+    margin: 0;
+    color: #1e293b;
+  }
+
+  .layer-browser-title p {
+    margin: 0.25rem 0 0;
+    color: #475569;
+    font-size: 0.9rem;
+  }
+
+  .layer-browser-controls {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .page-input-group {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    color: #475569;
+  }
+
+  .page-input-group input {
+    width: 80px;
+    padding: 0.25rem 0.4rem;
+    border: 1px solid #cbd5f5;
+    border-radius: 0.375rem;
+  }
+
+  /* Force-hide cursor when painting/erasing */
+  .hide-cursor { 
+    cursor: none !important; 
+  }
+  
+  .hide-cursor * {
+    cursor: none !important;
+  }
+
+  #canvas-container {
+    position: relative;
+    display: inline-block;
+    transform-origin: center center;
+    transition: transform 0.1s ease-out;
+    margin: auto;
+  }
+
+  canvas {
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    image-rendering: auto;
+    cursor: default;
+    display: block;
+    margin: auto;
+  }
+
+  #base {
+    z-index: 0;
+    position: relative;
+  }
+
+  #mask-layer {
+    position: absolute;
+    top: 0; 
+    left: 0;
+    opacity: 1.0;
+    pointer-events: none;
+    z-index: 2;
+    background: transparent;
+    mix-blend-mode: normal;
+  }
+
+  #cursor-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    z-index: 999; /* keep cursor preview on top */
+  }
+
+  .hint {
+    margin-top: 0.25rem;
+    font-size: 0.7rem;
+    color: #6b7280;
+    flex-shrink: 0;
+    text-align: center;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 0.25rem;
+  }
+
+  .hint p {
+    margin: 0.25rem 0;
+  }
+
+  .warning {
+    color: #dc2626;
+    margin-top: 0.5rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+  }
+
+  #save.saving {
+    background-color: #6b7280;
+    cursor: wait;
+  }
+
+  .editor-wrapper::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+  
+  .editor-wrapper::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 6px;
+  }
+  
+  .editor-wrapper::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 6px;
+  }
+  
+  .editor-wrapper::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+  }
+
+
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type=number] {
+    -moz-appearance: textfield;
+  }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const is3D = {{ 'true' if mode3d else 'false' }};
+const numSlices = {{ num_slices }};
+const maxZ = {{ num_slices - 1 if mode3d else 0 }};
+let z = 0;
+let paintBrush = 8, eraseBrush = 8, brush = paintBrush;
+let mode = 'add', drawing = false, isNavigating = false;
+const editedSlices = {};
+const dirty = {}; // per-slice dirty flag: only true when user edits
+const undoStacks = {}, redoStacks = {}; // per-slice undo/redo
+let lastBrushX = null, lastBrushY = null; // Track last brush position for smooth drawing
+
+const base = document.getElementById('base');
+const mask = document.getElementById('mask-layer');
+const cursor = document.getElementById('cursor-layer');
+const bctx = base.getContext('2d');
+const mctx = mask.getContext('2d');
+const cctx = cursor.getContext('2d');
+const container = document.getElementById('canvas-container');
+const editorWrapper = document.getElementById('editor-wrapper');
+
+/* ---- Mask toggle ---- */
+const toggleBtn = document.getElementById('toggle-mask');
+let maskVisible = true;
+toggleBtn.onclick = () => {
+  maskVisible = !maskVisible;
+  mask.style.visibility = maskVisible ? 'visible' : 'hidden';
+  toggleBtn.textContent = maskVisible ? 'Hide Mask' : 'Show Mask';
+};
+
+/* ---- Zoom ---- */
+let zoom = 1;
+const minZoom = 0.1, maxZoom = 10.0;
+editorWrapper.addEventListener('wheel', (e) => {
+  if (!e.metaKey) return;
+  e.preventDefault();
+  const delta = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+  const newZoom = Math.min(maxZoom, Math.max(minZoom, zoom * delta));
+  
+  zoom = newZoom;
+  container.style.transform = `scale(${zoom})`;
+}, { passive: false });
+
+/* ---- Brushes ---- */
+document.getElementById('paint-brush').oninput = e => {
+  paintBrush = parseInt(e.target.value, 10);
+  if (mode === 'add') {
+    brush = paintBrush;
+    // Redraw cursor preview with new size when in paint mode
+    redrawCursorPreview();
+  }
+};
+document.getElementById('erase-brush').oninput = e => {
+  eraseBrush = parseInt(e.target.value, 10);
+  if (mode === 'erase') {
+    brush = eraseBrush;
+    // Redraw cursor preview with new size when in erase mode
+    redrawCursorPreview();
+  }
+};
+
+/* ---- Mode toggle ---- */
+function setMode(newMode) {
+  mode = newMode;
+  
+  // Update button classes for active mode
+  const addBtn = document.getElementById('mode-add');
+  const eraseBtn = document.getElementById('mode-erase');
+  
+  // Reset all buttons
+  [addBtn, eraseBtn].forEach(btn => {
+    btn.classList.remove('active-mode', 'btn-success');
+    btn.classList.add('btn-secondary');
+  });
+  
+  if (newMode === 'add') {
+    addBtn.classList.add('active-mode', 'btn-success');
+    addBtn.classList.remove('btn-secondary');
+    brush = paintBrush;
+    redrawCursorPreview();
+    // Hide system cursor; show our circle preview
+    [base, mask, cursor, container, editorWrapper].forEach(el => el.classList.add('hide-cursor'));
+    console.log('🖌️ Switched to Paint mode');
+  } else if (newMode === 'erase') {
+    eraseBtn.classList.add('active-mode', 'btn-success');
+    eraseBtn.classList.remove('btn-secondary');
+    brush = eraseBrush;
+    redrawCursorPreview();
+    // Hide system cursor; show our circle preview
+    [base, mask, cursor, container, editorWrapper].forEach(el => el.classList.add('hide-cursor'));
+    console.log('🧽 Switched to Erase mode');
+  }
+}
+
+document.getElementById('mode-add').onclick  = ()=>setMode('add');
+document.getElementById('mode-erase').onclick= ()=>setMode('erase');
+
+/* ---- Slice navigation ---- */
+if (is3D) {
+  const zInput = document.getElementById('z');
+  const zInc   = document.getElementById('z-inc');
+  const zDec   = document.getElementById('z-dec');
+
+  async function gotoSlice(newZ) {
+    if (isNavigating) return;
+    newZ = Math.max(0, Math.min(maxZ, newZ|0));
+    if (newZ === z) return;
+
+    isNavigating = true;
+    try {
+      if (dirty[z]) { await cacheCurrentSlice(); }
+      z = newZ;
+      if (zInput.value != z + 1) zInput.value = z + 1;
+      await loadSlice();
+    } finally { isNavigating = false; }
+  }
+
+  zInc.addEventListener('click', () => gotoSlice(z + 1));
+  zDec.addEventListener('click', () => gotoSlice(z - 1));
+  zInput.addEventListener('change', () => {
+    const target = parseInt(zInput.value, 10);
+    if (!Number.isNaN(target)) {
+      gotoSlice(target - 1);
+    }
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return;
+    if (['a', 'A', 'ArrowLeft'].includes(e.key)) gotoSlice(z - 1);
+    else if (['d', 'D', 'ArrowRight'].includes(e.key)) gotoSlice(z + 1);
+  });
+  window.gotoSlice = gotoSlice;
+}
+
+/* ---- Update slice info display ---- */
+function updateSliceInfo() {
+  const sliceInfo = document.getElementById('slice-info');
+  if (sliceInfo) {
+    if (is3D) {
+      sliceInfo.innerHTML = `<strong>Current Slice:</strong> ${z + 1} (of ${numSlices} slices)`;
+    } else {
+      sliceInfo.innerHTML = `<strong>Current Slice:</strong> 1 (of 1 slice)`;
+    }
+  }
+  if (window.layerPager && typeof window.layerPager.setActiveSlice === 'function') {
+    window.layerPager.setActiveSlice(is3D ? z : 0);
+  }
+}
+
+/* ---- Load slice ---- */
+async function loadSlice(){
+  const [imgBlob, maskBlob] = await Promise.all([
+    fetch(`/standalone_proofreading/api/slice/${is3D?z:0}`).then(r=>r.blob()),
+    fetch(`/standalone_proofreading/api/mask/${is3D?z:0}`).then(r=>r.blob())
+  ]);
+  
+  // Create image bitmaps - ensure mask preserves alpha channel
+  const [imgBitmap, maskBitmap] = await Promise.all([
+    createImageBitmap(imgBlob),
+    createImageBitmap(maskBlob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' })
+  ]);
+  
+  console.log('Loaded bitmaps - image:', imgBitmap.width, 'x', imgBitmap.height, 'mask:', maskBitmap.width, 'x', maskBitmap.height);
+  
+  // Set canvas dimensions
+  [base.width, base.height] = [imgBitmap.width, imgBitmap.height];
+  [mask.width, mask.height] = [maskBitmap.width, maskBitmap.height];
+  [cursor.width, cursor.height] = [imgBitmap.width, imgBitmap.height];
+  
+  // Ensure all canvases are positioned correctly
+  cursor.style.position = 'absolute';
+  cursor.style.top = '0';
+  cursor.style.left = '0';
+  
+  mask.style.position = 'absolute';
+  mask.style.top = '0';
+  mask.style.left = '0';
+  mask.style.visibility = 'visible';
+  
+  // Canvas size validation - ensure base and mask canvases match
+  if (base.width !== mask.width || base.height !== mask.height) {
+    console.warn('Canvas size mismatch detected - forcing mask to match base canvas');
+    [mask.width, mask.height] = [base.width, base.height];
+  }
+  
+  console.log('Canvas setup - base:', base.width, 'x', base.height, 'mask:', mask.width, 'x', mask.height);
+  
+  bctx.drawImage(imgBitmap, 0, 0);
+  
+  // Ensure mask canvas is visible and positioned correctly
+  mask.style.visibility = 'visible';
+  mask.style.position = 'absolute';
+  mask.style.top = '0';
+  mask.style.left = '0';
+  mask.style.display = 'block';
+  maskVisible = true;
+  
+  // Clear mask canvas
+  mctx.clearRect(0, 0, mask.width, mask.height);
+  
+  // Extract mask from RGBA bitmap - backend sends RGBA with white/grayscale where mask exists
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = maskBitmap.width;
+  tempCanvas.height = maskBitmap.height;
+  const tempCtx = tempCanvas.getContext('2d');
+  tempCtx.drawImage(maskBitmap, 0, 0);
+  
+  // Get RGBA data from backend mask
+  const rgbaData = tempCtx.getImageData(0, 0, maskBitmap.width, maskBitmap.height);
+  const rgbaPixels = rgbaData.data;
+  
+  // Create RGBA overlay with grayscale (white) where mask exists
+  const overlayRGBA = mctx.createImageData(mask.width, mask.height);
+  const overlayPixels = overlayRGBA.data;
+  
+  let maskPixelCount = 0;
+  for (let i = 0; i < rgbaPixels.length; i += 4) {
+    const r = rgbaPixels[i];
+    const g = rgbaPixels[i + 1];
+    const b = rgbaPixels[i + 2];
+    const a = rgbaPixels[i + 3];
+    
+    // Backend sends RGBA with white/grayscale where mask exists
+    // Check if this is a mask pixel (white/light gray with alpha)
+    const isMaskPixel = (a > 50 && (r > 200 || g > 200 || b > 200));
+    
+    if (isMaskPixel) {
+      maskPixelCount++;
+      // Create grayscale overlay for display (white with transparency)
+      overlayPixels[i] = 255;     // Red channel
+      overlayPixels[i + 1] = 255; // Green channel
+      overlayPixels[i + 2] = 255; // Blue channel
+      overlayPixels[i + 3] = 230; // Alpha (denser mask)
+    } else {
+      // No mask - transparent
+      overlayPixels[i + 3] = 0;
+    }
+  }
+  
+  // Draw grayscale overlay directly to canvas (we'll extract grayscale when saving)
+  mctx.globalCompositeOperation = 'source-over';
+  mctx.putImageData(overlayRGBA, 0, 0);
+  
+  console.log('Mask loaded - mask pixels:', maskPixelCount, 'out of', rgbaPixels.length / 4);
+
+  // Update filename info for folder/glob/list datasets
+  try {
+    const zr = is3D ? z : 0;
+    const meta = await fetch(`/standalone_proofreading/api/names/${zr}`).then(r=>r.json());
+    const info = document.getElementById('file-info');
+    if (meta && (meta.image || meta.mask)) {
+      const imgName = meta.image || '—';
+      const maskName = meta.mask || 'None';
+      info.innerHTML = `<strong>File:</strong> ${imgName} &nbsp; <strong>Mask:</strong> ${maskName}`;
+    } else {
+      info.innerHTML = `<strong>File:</strong> —`;
+    }
+  } catch (e) {
+    // ignore display errors
+  }
+
+  // Update slice info
+  updateSliceInfo();
+
+  if (editedSlices[z]) {
+    const img = new Image();
+    img.src = "data:image/png;base64," + editedSlices[z];
+    await new Promise(res => { 
+      img.onload = () => {
+        // Edited slices are saved as grayscale - convert to red overlay
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = mask.width;
+        tempCanvas.height = mask.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(img, 0, 0);
+        
+        // Get grayscale data
+        const grayData = tempCtx.getImageData(0, 0, mask.width, mask.height);
+        const grayPixels = grayData.data;
+        
+        // Create grayscale overlay from grayscale mask
+        const overlayData = mctx.createImageData(mask.width, mask.height);
+        const overlayPixels = overlayData.data;
+        
+        for (let i = 0; i < grayPixels.length; i += 4) {
+          const gray = grayPixels[i]; // Grayscale value
+          if (gray > 0) {
+            overlayPixels[i] = 255;     // Red channel (white)
+            overlayPixels[i + 1] = 255; // Green channel (white)
+            overlayPixels[i + 2] = 255; // Blue channel (white)
+            overlayPixels[i + 3] = 230; // Alpha (denser mask)
+          } else {
+            overlayPixels[i + 3] = 0; // Transparent
+          }
+        }
+        
+        // Draw red overlay to mask canvas
+        mctx.globalCompositeOperation = 'source-over';
+        mctx.putImageData(overlayData, 0, 0);
+        res();
+      }
+    });
+  }
+  undoStacks[z] = undoStacks[z] || [];
+  redoStacks[z] = redoStacks[z] || [];
+}
+loadSlice();
+
+class LayerPagination {
+  constructor() {
+    this.summary = document.getElementById('layer-browser-summary');
+    this.nextBtn = document.getElementById('layer-next-page');
+    this.prevBtn = document.getElementById('layer-prev-page');
+    this.pageInput = document.getElementById('layer-page-input');
+    this.goBtn = document.getElementById('layer-go-button');
+    this.perPage = 36;
+    this.totalLayers = Math.max(1, numSlices || 1);
+    this.totalPages = Math.max(1, Math.ceil(this.totalLayers / this.perPage));
+    this.currentPage = 1;
+    this.bindEvents();
+    this.updateDisplay();
+  }
+
+  bindEvents() {
+    this.nextBtn?.addEventListener('click', () => this.loadPage(this.currentPage + 1));
+    this.prevBtn?.addEventListener('click', () => this.loadPage(this.currentPage - 1));
+    this.goBtn?.addEventListener('click', () => {
+      const target = parseInt(this.pageInput?.value || '1', 10);
+      if (!isNaN(target)) this.loadPage(target);
+    });
+  }
+
+  loadPage(page) {
+    const clamped = Math.max(1, Math.min(page, this.totalPages));
+    if (clamped === this.currentPage) return;
+    this.currentPage = clamped;
+    const targetZ = Math.min(this.totalLayers - 1, (clamped - 1) * this.perPage);
+    if (typeof window.gotoSlice === 'function') {
+      window.gotoSlice(targetZ);
+    }
+    this.updateDisplay();
+  }
+
+  setActiveSlice(activeZ) {
+    const derivedPage = Math.floor(activeZ / this.perPage) + 1;
+    if (derivedPage !== this.currentPage) {
+      this.currentPage = derivedPage;
+    }
+    this.updateDisplay();
+  }
+
+  updateDisplay() {
+    if (this.pageInput) {
+      this.pageInput.max = String(this.totalPages);
+      this.pageInput.value = String(this.currentPage);
+    }
+    if (this.summary) {
+      const start = this.totalLayers === 0 ? 0 : ((this.currentPage - 1) * this.perPage) + 1;
+      const end = Math.min(this.totalLayers, start + this.perPage - 1);
+      this.summary.textContent = `Showing layers ${start}–${end} of ${this.totalLayers}`;
+    }
+    if (this.prevBtn) this.prevBtn.disabled = this.currentPage <= 1;
+    if (this.nextBtn) this.nextBtn.disabled = this.currentPage >= this.totalPages;
+    if (this.goBtn) this.goBtn.disabled = this.totalPages <= 1;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const browser = document.getElementById('layer-browser');
+  if (!browser) return;
+  if (is3D) {
+    window.layerPager = new LayerPagination();
+  } else {
+    browser.style.display = 'none';
+  }
+});
+
+/* ---- Painting + History ---- */
+base.onmousedown = e => { 
+  pushHistory(); 
+  drawing = true; 
+  lastBrushX = null; 
+  lastBrushY = null;
+  paint(e); 
+};
+base.onmousemove = e => { if(drawing) paint(e); };
+window.onmouseup  = ()=> { 
+  drawing = false; 
+  lastBrushX = null; 
+  lastBrushY = null;
+};
+
+function paint(e){
+  const rect = base.getBoundingClientRect();
+  
+  // Improved coordinate mapping with bounds checking
+  const scaleX = base.width / rect.width;
+  const scaleY = base.height / rect.height;
+  const x = Math.round((e.clientX - rect.left) * scaleX);
+  const y = Math.round((e.clientY - rect.top) * scaleY);
+  
+  // Ensure coordinates are within canvas bounds
+  const clampedX = Math.max(0, Math.min(base.width - 1, x));
+  const clampedY = Math.max(0, Math.min(base.height - 1, y));
+  
+  // Draw grayscale overlay directly (white with transparency)
+  if (mode === 'add') {
+    mctx.fillStyle = 'rgba(255, 255, 255, 0.9)'; // White with higher opacity
+    mctx.globalCompositeOperation = 'source-over';
+  } else {
+    // Erase mode - draw fully opaque strokes so destination-out actually removes pixels
+    mctx.fillStyle = 'rgba(0, 0, 0, 1)';
+    mctx.globalCompositeOperation = 'destination-out';
+  }
+  
+  // Draw smooth brush strokes by connecting points with filled circles
+  if (lastBrushX !== null && lastBrushY !== null) {
+    // Calculate distance between points for smooth interpolation
+    const dx = clampedX - lastBrushX;
+    const dy = clampedY - lastBrushY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    if (distance > 0) {
+      // Interpolate between points to fill gaps
+      const steps = Math.ceil(distance / (brush / 2));
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const interpX = lastBrushX + dx * t;
+        const interpY = lastBrushY + dy * t;
+        
+        mctx.beginPath();
+        mctx.arc(interpX, interpY, brush, 0, 2*Math.PI);
+        mctx.fill();
+      }
+    }
+  }
+  
+  // Draw current brush position (filled circle)
+  mctx.beginPath();
+  mctx.arc(clampedX, clampedY, brush, 0, 2*Math.PI);
+  mctx.fill();
+  
+  // Reset composite operation
+  mctx.globalCompositeOperation = 'source-over';
+  
+  // Update last position for smooth drawing
+  lastBrushX = clampedX;
+  lastBrushY = clampedY;
+  dirty[is3D?z:0] = true;
+}
+
+/* ---- Undo / Redo ---- */
+function pushHistory(){
+  const stack = undoStacks[z] = undoStacks[z] || [];
+  if (stack.length > 50) stack.shift(); // limit memory
+  stack.push(mctx.getImageData(0,0,mask.width,mask.height));
+  redoStacks[z] = []; // clear redo when new paint
+}
+
+function undo(){
+  const stack = undoStacks[z] || [];
+  if (!stack.length) return;
+  const redoStack = redoStacks[z] = redoStacks[z] || [];
+  redoStack.push(mctx.getImageData(0,0,mask.width,mask.height));
+  const prev = stack.pop();
+  if (prev) mctx.putImageData(prev,0,0);
+  dirty[is3D?z:0] = true;
+}
+function redo(){
+  const stack = redoStacks[z] || [];
+  if (!stack.length) return;
+  const undoStack = undoStacks[z] = undoStacks[z] || [];
+  undoStack.push(mctx.getImageData(0,0,mask.width,mask.height));
+  const next = stack.pop();
+  if (next) mctx.putImageData(next,0,0);
+  dirty[is3D?z:0] = true;
+}
+
+document.getElementById('undo').onclick = undo;
+document.getElementById('redo').onclick = redo;
+window.addEventListener('keydown', e=>{
+  if (e.metaKey || e.ctrlKey){
+    if (e.key === 'z' && !e.shiftKey){ e.preventDefault(); undo(); }
+    else if ((e.key === 'Z' && e.shiftKey) || (e.key==='y')){ e.preventDefault(); redo(); }
+  }
+});
+
+/* ---- Cache slice (safe Base64 encoder) ---- */
+async function cacheCurrentSlice(){
+  // Extract grayscale mask from grayscale overlay canvas
+  // White overlay pixels = white mask pixels, transparent = no mask
+  const maskData = mctx.getImageData(0, 0, mask.width, mask.height);
+  const pixels = maskData.data;
+  
+  // Create grayscale mask (white = mask exists, black = no mask)
+  const grayscaleData = mctx.createImageData(mask.width, mask.height);
+  const grayPixels = grayscaleData.data;
+  
+  for (let i = 0; i < pixels.length; i += 4) {
+    const r = pixels[i];
+    const g = pixels[i + 1];
+    const b = pixels[i + 2];
+    const a = pixels[i + 3];
+    
+    // Check if this is grayscale overlay (mask area) - white/light gray with alpha
+    const isMaskOverlay = (a > 50 && (r > 200 || g > 200 || b > 200));
+    
+    if (isMaskOverlay) {
+      // Mask exists - save as white
+      grayPixels[i] = 255;
+      grayPixels[i + 1] = 255;
+      grayPixels[i + 2] = 255;
+      grayPixels[i + 3] = 255;
+    } else {
+      // No mask - black/transparent
+      grayPixels[i] = 0;
+      grayPixels[i + 1] = 0;
+      grayPixels[i + 2] = 0;
+      grayPixels[i + 3] = 0;
+    }
+  }
+  
+  // Draw grayscale mask to temp canvas and save
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = mask.width;
+  tempCanvas.height = mask.height;
+  const tempCtx = tempCanvas.getContext('2d');
+  tempCtx.putImageData(grayscaleData, 0, 0);
+  
+  const blob = await new Promise(res => tempCanvas.toBlob(res, 'image/png'));
+  const buf = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  const b64 = btoa(binary);
+  const zKey = is3D ? z : 0;    // <— key point: 2D uses slice 0
+  editedSlices[zKey] = b64;
+}
+
+/* ---- Save all slices ---- */
+document.getElementById('save').onclick = async ()=>{
+  const saveBtn = document.getElementById('save');
+  saveBtn.classList.add('saving');
+  saveBtn.textContent = 'Saving...';
+  try {
+    // only capture current canvas if it's dirty
+    if (dirty[is3D?z:0]) { await cacheCurrentSlice(); }
+
+    const batch = Object.entries(editedSlices).map(([z, png]) => ({ z: parseInt(z, 10), png }));
+
+    const r = await fetch('/standalone_proofreading/api/mask/update', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ full_batch: batch })
+    });
+    const resp = await r.json();
+    if (!resp.success) throw new Error(resp.error || 'Mask update failed');
+
+    const fin = await fetch('/standalone_proofreading/api/save', { method:'POST' });
+    const data = await fin.json();
+    if (!data.success) throw new Error(data.error || 'Save incomplete');
+
+    await loadSlice();
+    Object.keys(editedSlices).forEach(k=>delete editedSlices[k]);
+    Object.keys(dirty).forEach(k=>delete dirty[k]);
+    saveBtn.textContent = 'Saved!';
+  } catch (err){
+    console.error(err); alert(err.message);
+  } finally {
+    setTimeout(()=>{ saveBtn.textContent='Save'; saveBtn.classList.remove('saving'); },1000);
+  }
+};
+
+// Circular brush cursor preview only for paint/erase
+let lastCursorX = null, lastCursorY = null;
+function redrawCursorPreview(x, y){
+  if (!(mode === 'add' || mode === 'erase')) {
+    cctx.clearRect(0,0,cursor.width,cursor.height);
+    return;
+  }
+  if (x === undefined || y === undefined) {
+    x = lastCursorX;
+    y = lastCursorY;
+  }
+  if (x === null || y === null) return;
+  
+  cctx.clearRect(0,0,cursor.width,cursor.height);
+  // Inner bright ring
+  cctx.beginPath();
+  cctx.strokeStyle = 'rgba(255,255,255,0.95)';
+  cctx.lineWidth = 1.5;
+  cctx.arc(x, y, brush, 0, Math.PI*2);
+  cctx.stroke();
+  // Outer dark ring for contrast
+  cctx.beginPath();
+  cctx.strokeStyle = 'rgba(0,0,0,0.6)';
+  cctx.lineWidth = 1;
+  cctx.arc(x, y, brush + 1, 0, Math.PI*2);
+  cctx.stroke();
+}
+
+function updateCursorPosition(e) {
+  const rect = base.getBoundingClientRect();
+  const scaleX = base.width / rect.width;
+  const scaleY = base.height / rect.height;
+  lastCursorX = Math.round((e.clientX - rect.left) * scaleX);
+  lastCursorY = Math.round((e.clientY - rect.top) * scaleY);
+  redrawCursorPreview();
+}
+
+// Track mouse on canvas and container for cursor preview
+base.addEventListener('mousemove', updateCursorPosition);
+container.addEventListener('mousemove', updateCursorPosition);
+base.addEventListener('mouseleave', ()=> {
+  lastCursorX = lastCursorY = null;
+  cctx.clearRect(0,0,cursor.width,cursor.height);
+});
+container.addEventListener('mouseleave', ()=> {
+  lastCursorX = lastCursorY = null;
+  cctx.clearRect(0,0,cursor.width,cursor.height);
+});
+
+// Keyboard shortcuts for mode switching
+window.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === 'p' || e.key === 'P') {
+    e.preventDefault();
+    setMode('add');
+  } else if (e.key === 'e' || e.key === 'E') {
+    e.preventDefault();
+    setMode('erase');
+  }
+});
+
+setMode('add');
+</script>
+{% endblock %}

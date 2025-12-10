@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}Review - Error Categorization{% endblock %}
+{% block page_title %}Review & Categorization{% endblock %}
+
+{% block content %}
+<div class="review-container">
+  <div class="page-navigation">
+    <button id="back-to-detection" class="btn btn-secondary">← Back to Detection</button>
+    <button id="proceed-to-export" class="btn btn-primary">Proceed to Export</button>
+  </div>
+  
+  <div class="review-header">
+    <div class="review-stats">
+      <h3>Review Statistics</h3>
+      <div class="stats-grid">
+        <div class="stat-card total total-full-width">
+          <div class="stat-number">{{ progress.total }}</div>
+          <div class="stat-label">Total Layers</div>
+        </div>
+        <div class="stats-row">
+          <div class="stat-card correct">
+            <div class="stat-number">{{ progress.correct }}</div>
+            <div class="stat-label">Correct Layers</div>
+          </div>
+          <div class="stat-card incorrect">
+            <div class="stat-number">{{ progress.incorrect }}</div>
+            <div class="stat-label">Incorrect Layers</div>
+          </div>
+          <div class="stat-card unsure">
+            <div class="stat-number">{{ progress.unsure }}</div>
+            <div class="stat-label">Unsure Layers</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+  </div>
+
+  <div class="review-content">
+    <div class="filter-section">
+      <h3>Filter Layers</h3>
+      <div class="filter-controls">
+        <select id="status-filter">
+          <option value="all">All Statuses</option>
+          <option value="correct">Correct</option>
+          <option value="incorrect">Incorrect</option>
+          <option value="unsure">Unsure</option>
+        </select>
+        
+        
+        <button id="apply-filters" class="btn btn-secondary">Apply Filters</button>
+      </div>
+    </div>
+
+    <div class="layers-section">
+      <h3>Layers Requiring Review</h3>
+      <div id="review-layers-grid" class="layers-grid">
+        <!-- Layers will be loaded dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <div class="review-footer">
+    <div class="footer-info">
+      <p>Review and categorize layers marked as incorrect or unsure. Export for proofreading integration.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Layer Detail Modal -->
+<div id="layer-detail-modal" class="modal">
+  <div class="modal-content large">
+    <div class="modal-header">
+      <h3>Layer Details & Analysis</h3>
+      <button class="modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="detail-tabs">
+        <button class="tab-btn active" data-tab="overview">Overview</button>
+        <button class="tab-btn" data-tab="analysis">Analysis</button>
+        <button class="tab-btn" data-tab="annotation">Annotation</button>
+      </div>
+      
+      <div class="tab-content">
+        <div id="overview-tab" class="tab-pane active">
+          <div class="overview-content">
+            <div class="layer-image-section">
+              <img id="detail-layer-image" src="" alt="Layer image" class="detail-image">
+            </div>
+            <div class="layer-info-section">
+              <h4>Layer Information</h4>
+              <div id="detail-layer-info"></div>
+            </div>
+          </div>
+        </div>
+        
+        <div id="analysis-tab" class="tab-pane">
+          <div class="analysis-content">
+            <h4>Error Analysis</h4>
+            <div id="detail-error-analysis"></div>
+          </div>
+        </div>
+        
+        <div id="annotation-tab" class="tab-pane">
+          <div class="annotation-content">
+            <h4>Current Annotation</h4>
+            <div id="detail-current-annotation"></div>
+            
+            <h4>Edit Annotation</h4>
+            <form id="detail-annotation-form">
+              <div class="form-group">
+                <label for="detail-status">Status</label>
+                <select id="detail-status" name="status">
+                  <option value="correct">Correct</option>
+                  <option value="incorrect">Incorrect</option>
+                  <option value="unsure">Unsure</option>
+                </select>
+              </div>
+              
+              <div class="form-group">
+                <label for="detail-error-type">Error Type</label>
+                <select id="detail-error-type" name="error_type">
+                  <option value="">Select error type...</option>
+                  <option value="segmentation_error">Segmentation Error</option>
+                  <option value="missing_annotation">Missing Annotation</option>
+                  <option value="false_positive">False Positive</option>
+                  <option value="boundary_issue">Boundary Issue</option>
+                  <option value="over_segmentation">Over Segmentation</option>
+                  <option value="under_segmentation">Under Segmentation</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              
+              <div class="form-group">
+                <label for="detail-severity">Severity</label>
+                <select id="detail-severity" name="severity">
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+              
+              <div class="form-group">
+                <label for="detail-description">Description</label>
+                <textarea id="detail-description" name="description" rows="3"></textarea>
+              </div>
+              
+              <div class="form-group">
+                <label for="detail-confidence">Confidence</label>
+                <input type="number" id="detail-confidence" name="confidence" 
+                       min="0" max="1" step="0.1">
+              </div>
+              
+              <div class="form-group">
+                <label for="detail-notes">Notes</label>
+                <textarea id="detail-notes" name="notes" rows="2"></textarea>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button id="save-detail-annotation" class="btn btn-primary">Save Changes</button>
+      <button class="btn btn-secondary modal-close">Close</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/review.js') }}"></script>
+<script>
+// Initialize review interface
+document.addEventListener('DOMContentLoaded', function() {
+  const reviewInterface = new ReviewInterface();
+  reviewInterface.init();
+});
+</script>
+{% endblock %}

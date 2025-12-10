@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+
+{% block title %}Error Detection - Layer Annotation{% endblock %}
+{% block page_title %}Error Detection{% endblock %}
+
+{% block content %}
+<div class="detection-container">
+  <div class="page-navigation">
+    <button id="proceed-to-review" class="btn btn-primary">Proceed to Review</button>
+  </div>
+  
+  <div class="detection-header">
+    <div class="progress-info">
+      <h3>Progress</h3>
+      <div class="progress-stats">
+        <div class="stat-item">
+          <span class="stat-label">Total:</span>
+          <span class="stat-value">{{ progress.total }}</span>
+        </div>
+        <div class="stat-item correct">
+          <span class="stat-label">Correct:</span>
+          <span class="stat-value">{{ progress.correct }}</span>
+        </div>
+        <div class="stat-item incorrect">
+          <span class="stat-label">Incorrect:</span>
+          <span class="stat-value">{{ progress.incorrect }}</span>
+        </div>
+        <div class="stat-item unsure">
+          <span class="stat-label">Unsure:</span>
+          <span class="stat-value">{{ progress.unsure }}</span>
+        </div>
+        <div class="stat-item unlabeled">
+          <span class="stat-label">Unlabeled:</span>
+          <span class="stat-value">{{ progress.unlabeled }}</span>
+        </div>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width: {{ (progress.completion_rate * 100) | round(1) }}%"></div>
+      </div>
+    </div>
+    
+    <div class="controls">
+      <div class="batch-controls">
+        <div class="main-buttons">
+          <button id="select-all-correct" class="btn btn-success">Mark All Correct</button>
+          <button id="select-all-incorrect" class="btn btn-danger">Mark All Incorrect</button>
+          <button id="clear-selections" class="btn btn-secondary">Clear Selections</button>
+        </div>
+        
+        <div class="scope-selection">
+          <div class="scope-option">
+            <input type="radio" id="scope-current" name="scope" value="current" checked>
+            <label for="scope-current">Current Page</label>
+          </div>
+          <div class="scope-option">
+            <input type="radio" id="scope-all" name="scope" value="all">
+            <label for="scope-all">All Pages</label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="layers-grid" id="layers-grid">
+    {% for layer in layers %}
+    <div class="layer-card {{ layer.status or 'unlabeled' }}" data-layer-id="{{ layer.id }}" data-status="{{ layer.status or 'unlabeled' }}" data-z="{{ layer.z }}">
+      <div class="layer-header">
+        <h4>Layer {{ pagination.start_idx + loop.index - 1 }}</h4>
+        <div class="layer-status">
+          <span class="status-indicator {{ layer.status or 'unlabeled' }}"></span>
+          <span class="status-text">{{ (layer.status or 'unlabeled').title() }}</span>
+        </div>
+      </div>
+      
+      <div class="layer-content">
+        <div class="layer-image">
+          <img src="data:image/png;base64,{{ layer.overlay }}" 
+               alt="Layer {{ pagination.start_idx + loop.index - 1 }} overlay" 
+               class="overlay-image">
+        </div>
+        
+        <div class="layer-info">
+          <div class="info-item">
+            <span class="info-label">Has Mask:</span>
+            <span class="info-value">{{ "Yes" if layer.has_mask else "No" }}</span>
+          </div>
+          {% if layer.has_mask %}
+          <div class="info-item">
+            <span class="info-label">Coverage:</span>
+            <span class="info-value">{{ "%.1f"|format(layer.mask_coverage * 100) }}%</span>
+          </div>
+          {% endif %}
+        </div>
+        
+        <div class="layer-actions">
+          <button class="btn btn-success btn-sm status-btn {{ 'active' if layer.status == 'correct' else '' }}" data-status="correct">Correct</button>
+          <button class="btn btn-danger btn-sm status-btn {{ 'active' if layer.status == 'incorrect' else '' }}" data-status="incorrect">Incorrect</button>
+          <button class="btn btn-warning btn-sm status-btn {{ 'active' if layer.status == 'unsure' else '' }}" data-status="unsure">Unsure</button>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Pagination Controls -->
+  {% if pagination.total_pages > 1 %}
+  <div class="pagination-container">
+    <div class="pagination-info">
+      <span>Showing layers {{ pagination.start_idx }} to {{ pagination.end_idx }} of {{ pagination.total_layers }}</span>
+    </div>
+    <div class="pagination-controls">
+      {% if pagination.current_page > 1 %}
+        <a href="{{ url_for('detection.detection', page=1) }}" class="btn btn-sm btn-secondary">First</a>
+        <a href="{{ url_for('detection.detection', page=pagination.current_page - 1) }}" class="btn btn-sm btn-secondary">Previous</a>
+      {% endif %}
+      
+      <div class="pagination-center">
+        <div class="pagination-page-info">
+          <span class="pagination-current">
+            Page {{ pagination.current_page }} of {{ pagination.total_pages }}
+          </span>
+          <div class="page-input-group">
+            <label for="page-input" class="page-input-label">Go to:</label>
+            <input type="number" id="page-input" class="page-input" 
+                   min="1" max="{{ pagination.total_pages }}" 
+                   value="{{ pagination.current_page }}" 
+                   placeholder="Page">
+            <button id="go-to-page" class="btn btn-sm btn-primary">Go</button>
+          </div>
+        </div>
+      </div>
+      
+      {% if pagination.current_page < pagination.total_pages %}
+        <a href="{{ url_for('detection.detection', page=pagination.current_page + 1) }}" class="btn btn-sm btn-secondary">Next</a>
+        <a href="{{ url_for('detection.detection', page=pagination.total_pages) }}" class="btn btn-sm btn-secondary">Last</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="detection-footer">
+    <div class="footer-info">
+      <p>Click on layer images to view larger. Use buttons to label each layer.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Layer Detail Modal -->
+<div id="layer-modal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Layer Details</h3>
+      <button class="modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-image-container">
+        <img id="modal-image" src="" alt="Layer detail" class="modal-image">
+      </div>
+      <div class="modal-info">
+        <div class="info-section">
+          <h4>Layer Information</h4>
+          <div id="modal-layer-info"></div>
+        </div>
+        <div class="info-section">
+          <h4>Error Analysis</h4>
+          <div id="modal-error-analysis"></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" id="modal-annotate">Annotate Layer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Annotation Modal -->
+<div id="annotation-modal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Annotate Layer</h3>
+      <button class="modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="annotation-form">
+        <div class="form-group">
+          <label for="annotation-status">Status *</label>
+          <select id="annotation-status" name="status" required>
+            <option value="correct">Correct</option>
+            <option value="incorrect">Incorrect</option>
+            <option value="unsure">Unsure</option>
+          </select>
+        </div>
+        
+        <div class="form-group" id="error-type-group" style="display: none;">
+          <label for="error-type">Error Type</label>
+          <select id="error-type" name="error_type">
+            <option value="">Select error type...</option>
+            <option value="segmentation_error">Segmentation Error</option>
+            <option value="missing_annotation">Missing Annotation</option>
+            <option value="false_positive">False Positive</option>
+            <option value="boundary_issue">Boundary Issue</option>
+            <option value="over_segmentation">Over Segmentation</option>
+            <option value="under_segmentation">Under Segmentation</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        
+        <div class="form-group" id="severity-group" style="display: none;">
+          <label for="severity">Severity</label>
+          <select id="severity" name="severity">
+            <option value="low">Low</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label for="description">Description</label>
+          <textarea id="description" name="description" rows="3" 
+                    placeholder="Optional description of the issue..."></textarea>
+        </div>
+        
+        <div class="form-group">
+          <label for="confidence">Confidence (0-1)</label>
+          <input type="number" id="confidence" name="confidence" 
+                 min="0" max="1" step="0.1" value="0.5">
+        </div>
+        
+        <div class="form-group">
+          <label for="notes">Notes</label>
+          <textarea id="notes" name="notes" rows="2" 
+                    placeholder="Additional notes..."></textarea>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button type="submit" form="annotation-form" class="btn btn-primary">Save Annotation</button>
+      <button type="button" class="btn btn-secondary modal-close">Cancel</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/detection.js') }}"></script>
+<script>
+// Initialize detection interface
+document.addEventListener('DOMContentLoaded', function() {
+  const detectionInterface = new DetectionInterface();
+  
+  // Initialize with server progress data
+  const serverProgress = {
+    total: {{ progress.total }},
+    correct: {{ progress.correct }},
+    incorrect: {{ progress.incorrect }},
+    unsure: {{ progress.unsure }},
+    unlabeled: {{ progress.unlabeled }},
+    completion_rate: {{ progress.completion_rate }}
+  };
+  
+  
+  detectionInterface.init(serverProgress);
+});
+</script>
+{% endblock %}
