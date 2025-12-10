@@ -35,3 +35,6 @@ dist/
 .env.*
 *.log
 .github/workflows/docker-test.yml
+
+# Local dev tools
+online-error-handling-tool/
